@@ -20,7 +20,7 @@
         └ 작성 중인 박람회 (진행 상황 관리)
 ```
 
-① **대시보드** — 세계 지도에서 대륙 핀(박람회 개수 표시)을 클릭하면 해당 대륙의 박람회 목록 페이지로 이동
+① **대시보드** — 세계 지도에서 대륙 핀(박람회 개수 표시)을 클릭하면 해당 대륙의 박람회 목록 페이지로 이동. "크롤링 새로고침" 버튼으로 그 자리에서 바로 크롤링을 시작할 수 있고, 진행 중에는 버튼 옆에 작은 스피너가 표시됨 (백그라운드로 돌기 때문에 페이지를 나가도 계속 진행됨, 완료되면 신규/업데이트/비활성 건수를 보여줌)
 
 ② **대륙별 박람회 목록** — 선택한 대륙의 박람회를 목록으로 표시, 클릭 시 상세로 이동
 
@@ -67,7 +67,19 @@ source .venv/bin/activate
 python run.py          # 기본 포트 5000
 ```
 
-## 데이터 파이프라인 (앱과 분리된 배치 스크립트)
+## 크롤링 자동화 (대시보드 버튼)
+대시보드의 "크롤링 새로고침" 버튼을 누르면 `POST /crawl/run`이 별도 스레드에서
+`scripts/crawl/sync_to_db.py`의 크롤링·동기화 함수를 실행합니다. 브라우저는
+2초 간격으로 `GET /crawl/status`를 조회해 진행 상태(스피너)를 표시하고,
+끝나면 신규/업데이트/비활성 건수를 보여줍니다. 여러 명이 동시에 눌러도
+서버에서 락으로 막아 한 번에 하나만 실행됩니다. 상세페이지(`--details`)까지는
+버튼에서 돌리지 않으며(느림), 필요하면 아래 CLI로 별도 실행하세요.
+
+일부 카테고리의 크롤링 자체가 실패(네트워크 오류 등)하면 그 카테고리는
+"이번에 확인해봤더니 없어짐" 처리 대상에서 제외됩니다 — 안 그러면 일시적인
+장애로 기존 데이터가 통째로 비활성 처리되는 사고가 날 수 있습니다.
+
+## 데이터 파이프라인 (CLI, 앱과 분리된 배치 스크립트)
 웹 요청-응답과 무관한 주기적 배치 작업은 `scripts/`에 따로 둡니다. 실행 순서는 아래와 같습니다.
 
 ```bash
@@ -125,17 +137,19 @@ sabuzak/
 │   │   ├── exhibition.py        # 박람회 상세 (개요·시장·HS코드·주의사항 + 환율)
 │   │   ├── concept.py           # 부스 컨셉 생성 · 수정 · 초안 저장
 │   │   ├── proposal.py          # 기안서 생성 · 수정 · 초안 저장 · PDF/Word 출력
-│   │   └── drafts.py            # 작성 중인 박람회 목록
+│   │   ├── drafts.py            # 작성 중인 박람회 목록
+│   │   └── crawl.py             # 크롤링 시작(POST /crawl/run) · 상태 조회(GET /crawl/status)
 │   ├── services/
 │   │   ├── data.py              # raw_exhibitions 조회/가공 (pandas)
 │   │   ├── exchange.py          # 환율 API 호출 + 캐싱
 │   │   ├── country_names.py     # 국가명 영문→한글 정적 매핑 (country_ko 필터)
+│   │   ├── crawl_runner.py      # 백그라운드 스레드로 크롤링 실행 + 진행 상태 관리
 │   │   ├── llm.py               # OpenAI 컨셉·기안서 생성
 │   │   └── export.py            # PDF(weasyprint)/Word(python-docx) 출력
 │   ├── templates/
 │   │   ├── base.html            # 공통 레이아웃 (사이드바)
 │   │   ├── login.html
-│   │   ├── dashboard.html       # 세계 지도 (대륙 핀 클릭)
+│   │   ├── dashboard.html       # 세계 지도 (대륙 핀 클릭) + 크롤링 새로고침 버튼
 │   │   ├── continent.html       # 대륙별 박람회 목록
 │   │   ├── exhibition.html      # 상세 4탭
 │   │   ├── concept.html         # 부스 컨셉 기획 (AI 생성·수정·저장)
@@ -143,7 +157,7 @@ sabuzak/
 │   │   └── drafts.html          # 작성 중인 박람회
 │   └── static/
 │       ├── css/base.css
-│       ├── js/                  # map.js(지도 핀), tabs.js(탭 전환), concept.js, proposal.js
+│       ├── js/                  # map.js(지도 핀), tabs.js(탭 전환), crawl.js(크롤링 버튼+스피너), concept.js, proposal.js
 │       └── img/
 ├── scripts/                     # 데이터 파이프라인 (웹앱과 분리된 배치 스크립트)
 │   ├── crawl/
@@ -170,6 +184,7 @@ sabuzak/
 ## 구현 현황
 - [x] 데이터 파이프라인: tradefairdates.com 크롤링 → DB 동기화 → OpenAI 분류
 - [x] Flask 앱 스켈레톤: 로그인, 대시보드, 상세, 컨셉/기안서 라우트·템플릿
+- [x] 대시보드 버튼으로 크롤링 실행 (백그라운드 + 진행 스피너)
 - [ ] 지도 핀 실제 좌표 배치 (현재 `map.js`는 최소 동작만 구현)
 - [ ] 시장·트렌드 / HS코드 / 수출 주의사항 탭 데이터 연동 (`services/data.py`의 TODO)
 - [ ] 실시간 환율 API 실제 연동 (`services/exchange.py`)

@@ -2,12 +2,22 @@
 {% block title %}박람회 운영 대시보드{% endblock %}
 {% block content %}
   <header class="page-header">
-    <h1>박람회 운영 대시보드</h1>
-    <p>지도에서 핀을 클릭해 대륙별 박람회를 확인하세요</p>
+    <div class="page-header-row">
+      <div>
+        <h1>박람회 운영 대시보드</h1>
+        <p>지도에서 핀을 클릭해 대륙별 박람회를 확인하세요</p>
+      </div>
+      <div class="crawl-control">
+        <button id="crawl-btn" type="button">크롤링 새로고침</button>
+        <span id="crawl-spinner" class="spinner" hidden></span>
+        <span id="crawl-message" class="hint"></span>
+      </div>
+    </div>
   </header>
 
   <div id="world-map" class="world-map" data-counts='{{ counts | tojson }}'></div>
 {% endblock %}
 {% block scripts %}
   <script src="{{ url_for('static', filename='js/map.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/crawl.js') }}"></script>
 {% endblock %}

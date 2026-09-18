@@ -197,8 +197,16 @@ def row_key(row):
 
 
 def crawl_selected_sites(labels_urls, with_details, verbose=True):
-    """여러 카테고리를 순회하며 전체 페이지 수집 + 통합 중복 제거."""
+    """여러 카테고리를 순회하며 전체 페이지 수집 + 통합 중복 제거.
+
+    반환값: (all_rows, failed_labels). failed_labels는 카테고리 목록 페이지
+    자체를 못 가져온(네트워크 오류 등) 카테고리들 — 이 카테고리는 "이번에
+    크롤링해서 확인함"이 아니라 "크롤링을 시도조차 못 함"이므로, 호출 쪽에서
+    deactivate_missing()에 넘길 때 제외해야 한다. 안 그러면 일시적인 네트워크
+    장애로 크롤링이 전부 실패했을 때 기존 데이터가 통째로 비활성 처리되는
+    사고가 날 수 있다."""
     all_rows = []
+    failed_labels = []
     seen_keys = set()
 
     for label, url in labels_urls:
@@ -208,6 +216,7 @@ def crawl_selected_sites(labels_urls, with_details, verbose=True):
             rows = tfd.crawl_all_pages(url)
         except requests.exceptions.RequestException as e:
             print(f"  -> 실패: {e}")
+            failed_labels.append(label)
             continue
 
         new_rows = []
@@ -239,7 +248,7 @@ def crawl_selected_sites(labels_urls, with_details, verbose=True):
                 print(f"    -> 실패: {e}")
             tfd.polite_sleep()
 
-    return all_rows
+    return all_rows, failed_labels
 
 
 def sync_rows(conn, rows):
@@ -372,12 +381,15 @@ def main():
     conn = sqlite3.connect(args.db)
     init_db(conn)
 
-    rows = crawl_selected_sites(labels_urls, with_details=args.details)
+    rows, failed_labels = crawl_selected_sites(labels_urls, with_details=args.details)
     new_count, updated_count, unchanged_count, seen_urls = sync_rows(conn, rows)
 
     deactivated = 0
-    if not args.no_deactivate:
-        deactivated = deactivate_missing(conn, labels, seen_urls)
+    if failed_labels:
+        print(f"\n경고: 다음 카테고리는 크롤링 자체가 실패해서 비활성 처리에서 제외합니다: {failed_labels}")
+    succeeded_labels = [label for label in labels if label not in failed_labels]
+    if not args.no_deactivate and succeeded_labels:
+        deactivated = deactivate_missing(conn, succeeded_labels, seen_urls)
 
     conn.close()
 

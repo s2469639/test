@@ -5,6 +5,7 @@ def register_blueprints(app):
     from .concept import bp as concept_bp
     from .proposal import bp as proposal_bp
     from .drafts import bp as drafts_bp
+    from .crawl import bp as crawl_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -12,3 +13,4 @@ def register_blueprints(app):
     app.register_blueprint(concept_bp)
     app.register_blueprint(proposal_bp)
     app.register_blueprint(drafts_bp)
+    app.register_blueprint(crawl_bp)
