@@ -47,18 +47,23 @@
 - 외부 연동 — 환율 API(실시간 환율), OpenAI API(부스 컨셉·기안서 생성, 박람회 자동 분류)
 
 ## 설치
+한 번에 설치하려면:
 ```bash
-pip install -r requirements.txt
+./setup.sh
 ```
+가상환경(.venv) 생성 → `requirements.txt` 설치 → `.env` 생성(`.env.example` 복사) → DB 테이블 초기화까지 자동으로 처리합니다. 완료 후 `.env`에 `SECRET_KEY`, `OPENAI_API_KEY`를 채워주세요.
 
-`.env.example`를 `.env`로 복사한 뒤 값을 채웁니다.
-```env
-SECRET_KEY=change-me
-OPENAI_API_KEY=your_key
+수동으로 하려면:
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env   # 값 채우기
+export FLASK_APP=run.py && flask init-db
 ```
 
 ## 실행
 ```bash
+source .venv/bin/activate
 python run.py          # 기본 포트 5000
 ```
 

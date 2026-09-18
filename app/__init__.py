@@ -14,4 +14,11 @@ def create_app(config_object="config.Config"):
     from .routes import register_blueprints
     register_blueprints(app)
 
+    @app.cli.command("init-db")
+    def init_db():
+        """테이블 생성 (raw_exhibitions는 scripts/crawl/sync_to_db.py가 채움)."""
+        from . import models  # noqa: F401  (모델 등록을 위해 import)
+        db.create_all()
+        print("DB 초기화 완료:", app.config["SQLALCHEMY_DATABASE_URI"])
+
     return app
