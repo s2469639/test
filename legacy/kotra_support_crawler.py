@@ -1,3 +1,5 @@
+# [SCOPE 제외] 이번 프로젝트 범위에서 빠짐 (README의 "정부 지원금 — KOTRA 해외전시포털"
+# 연동은 하지 않기로 결정). 참고용으로만 남겨둠.
 import requests
 from bs4 import BeautifulSoup
 import re

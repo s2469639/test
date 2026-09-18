@@ -95,11 +95,10 @@ python scripts/classify/preprocess.py --db instance/sabuzak.db
 - `scripts/crawl/tradefairdates_scraper.py` — 단일 카테고리 페이지 크롤러 (다른 스크립트가 모듈로 불러다 씀). 개최기간 원문을 `start_date`/`end_date`(YYYYMMDD 숫자)로도 변환하고, `p.zutritt`(참관대상 원문, 예: "professional visitors only")도 함께 수집
 - `scripts/crawl/sync_to_db.py` — 7개 카테고리 통합 크롤링 + `raw_exhibitions` 증분 동기화 (이름이 같아도 날짜가 바뀌면 업데이트, 목록에서 사라진 항목은 삭제 대신 비활성 처리)
 - `scripts/crawl/multi_crawl_gui.py` — 위 크롤링을 수동으로 실행할 때 쓰는 내부용 GUI(tkinter) 도구, CSV로도 저장 가능
-- `scripts/crawl/kotra_support_crawler.py` — KOTRA 정부 지원사업 공고 크롤러
 - `scripts/classify/preprocess.py` — `raw_exhibitions`를 직접 읽고 분류 결과를 그대로 저장(`continent`/`food_yn`/`scale`/`keywords`/`intro_ko` 컬럼 UPDATE, 같은 API 호출 안에서 한 번에 처리). `classified_at` 컬럼으로 이미 분류된 건 건너뛰고, 크롤링으로 `last_updated_at`이 갱신된 것만 다시 분류함. `--force`로 전체 재분류, `--limit N`으로 연습용 소량 테스트 가능. 거래고객 유형(B2B/B2C)은 별도 분류 없이 `raw_exhibitions`의 참관대상 원문 컬럼을 그대로 보여주는 쪽으로 대체함
 - `app/services/country_names.py` — 국가명 영문→한글 정적 매핑(AI 호출 없음, `country_ko` Jinja 필터로 노출). `name`/`city`/`venue`는 고유명사라 번역하지 않고 원문 그대로 둠, `country`만 화면 표시 시 이 매핑을 거침 (매핑에 없는 국가는 원문 그대로)
 
-`legacy/classify_with_openai.py`(예전 영문 컬럼, B2B/B2C 자체 분류)와 `legacy/make_sample_csv.py`(CSV 샘플 추출용)는 `preprocess.py`가 DB를 직접 읽고 쓰게 되면서 더 이상 쓰지 않습니다.
+`legacy/classify_with_openai.py`(예전 영문 컬럼, B2B/B2C 자체 분류)와 `legacy/make_sample_csv.py`(CSV 샘플 추출용)는 `preprocess.py`가 DB를 직접 읽고 쓰게 되면서 더 이상 쓰지 않습니다. `legacy/kotra_support_crawler.py`(KOTRA 정부 지원사업 공고 크롤러)는 이번 프로젝트 범위에서 제외하기로 해서 참고용으로만 남겨둡니다.
 
 `app/models.py`의 `Exhibition` 모델은 `sync_to_db.py`가 채우고 `preprocess.py`가 분류 결과를 더하는 `raw_exhibitions` 테이블을 그대로 매핑해서 읽습니다.
 
@@ -163,14 +162,14 @@ sabuzak/
 │   ├── crawl/
 │   │   ├── tradefairdates_scraper.py
 │   │   ├── sync_to_db.py
-│   │   ├── multi_crawl_gui.py
-│   │   └── kotra_support_crawler.py
+│   │   └── multi_crawl_gui.py
 │   └── classify/
 │       └── preprocess.py
 ├── legacy/
-│   ├── streamlit_prototype.py   # 초기 Streamlit 목업 (참고용, 배포 대상 아님)
-│   ├── classify_with_openai.py  # 예전 분류 스크립트 (preprocess.py로 대체됨)
-│   └── make_sample_csv.py       # 예전 CSV 샘플 추출 스크립트 (preprocess.py --limit으로 대체됨)
+│   ├── streamlit_prototype.py    # 초기 Streamlit 목업 (참고용, 배포 대상 아님)
+│   ├── classify_with_openai.py   # 예전 분류 스크립트 (preprocess.py로 대체됨)
+│   ├── make_sample_csv.py        # 예전 CSV 샘플 추출 스크립트 (preprocess.py --limit으로 대체됨)
+│   └── kotra_support_crawler.py  # 이번 프로젝트 범위 제외 (참고용)
 ├── data/                        # HS코드·규제 등 정적 참조 데이터 (CSV 등, 준비 중)
 ├── instance/
 │   └── sabuzak.db                # SQLite (git 미포함)
@@ -193,5 +192,5 @@ sabuzak/
 
 ## 데이터 소스
 - 박람회 일정 — TradeFairDates
-- 정부 지원금 — KATI(aT 농식품 수출정보), KOTRA 해외전시포털(gep.or.kr)
 - 식품 규제 — 공공데이터포털(식품안전정보원 수출식품 부적합 사례)
+- (범위 제외) 정부 지원금 KATI/KOTRA 연동 — `legacy/kotra_support_crawler.py` 참고, 이번 프로젝트에서는 안 씀
