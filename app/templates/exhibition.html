@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{{ exhibition.name }}{% endblock %}
+{% block content %}
+  <div class="hero">
+    <a href="javascript:history.back()" class="back-btn">← 뒤로</a>
+    <h1>{{ exhibition.name }}</h1>
+    <p>{{ exhibition.country }} · {{ exhibition.city }} · {{ exhibition.venue }}</p>
+  </div>
+
+  <nav class="tabs" data-active="overview">
+    <button data-tab="overview" class="active">박람회 개요</button>
+    <button data-tab="market">시장·트렌드</button>
+    <button data-tab="hscode">HS코드</button>
+    <button data-tab="caution">수출 주의사항</button>
+    <a class="cta" href="{{ url_for('concept.edit', exhibition_id=exhibition.id) }}">부스 컨셉 기획 →</a>
+  </nav>
+
+  <section data-tab-panel="overview" class="tab-panel active">
+    <div class="card-grid">
+      <div class="card"><label>개최지</label><p>{{ exhibition.country }} · {{ exhibition.city }}</p></div>
+      <div class="card"><label>개최장소</label><p>{{ exhibition.venue }}</p></div>
+      <div class="card"><label>규모</label><p>{{ exhibition.scale or "미상" }}</p></div>
+      <div class="card"><label>카테고리</label><p>{{ exhibition.category }}</p></div>
+      <div class="card"><label>환율 (USD→KRW)</label><p>{{ exchange_rate if exchange_rate is not none else "조회 실패" }}</p></div>
+    </div>
+    <div class="card">
+      <label>공식 소개</label>
+      <p>{{ exhibition.intro }}</p>
+    </div>
+  </section>
+
+  <section data-tab-panel="market" class="tab-panel">
+    <!-- TODO: market_insight (YoY 성장률 + 전략 제안 카드) -->
+  </section>
+
+  <section data-tab-panel="hscode" class="tab-panel">
+    <!-- TODO: hs_codes (품목별 HS코드·관세율·필요 인증) -->
+  </section>
+
+  <section data-tab-panel="caution" class="tab-panel">
+    <!-- TODO: regulations (필수/정보/주의 등급별 규제 카드) -->
+  </section>
+{% endblock %}
+{% block scripts %}
+  <script src="{{ url_for('static', filename='js/tabs.js') }}"></script>
+{% endblock %}

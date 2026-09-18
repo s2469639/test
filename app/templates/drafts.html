@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}작성 중인 박람회{% endblock %}
+{% block content %}
+  <header class="page-header">
+    <h1>작성 중인 박람회</h1>
+  </header>
+
+  <h2>컨셉 초안</h2>
+  <ul class="draft-list">
+    {% for d in concept_drafts %}
+      <li><a href="{{ url_for('concept.edit', exhibition_id=d.exhibition_id) }}">{{ d.exhibition.name }}</a></li>
+    {% else %}
+      <li>작성 중인 컨셉이 없습니다.</li>
+    {% endfor %}
+  </ul>
+
+  <h2>기안서 초안</h2>
+  <ul class="draft-list">
+    {% for d in proposal_drafts %}
+      <li><a href="{{ url_for('proposal.edit', exhibition_id=d.exhibition_id) }}">{{ d.exhibition.name }}</a></li>
+    {% else %}
+      <li>작성 중인 기안서가 없습니다.</li>
+    {% endfor %}
+  </ul>
+{% endblock %}

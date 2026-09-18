@@ -1,0 +1,284 @@
+#!/usr/bin/env python3
+"""
+tradefairdates.com 크롤링 -> SQLite DB 동기화 스크립트
+
+목적:
+    매번 전체를 처음부터 다시 크롤링하는 대신, 기존에 DB에 있는 박람회는
+    그대로 두고(중복 저장 X), 새로 생긴 박람회만 추가하거나 정보가 바뀐
+    항목만 업데이트합니다.
+
+핵심 아이디어:
+    - 각 박람회의 상세페이지 URL(detail_url)을 "고유 키"로 사용합니다.
+      (tradefairdates.com에서 박람회마다 URL이 고유하게 부여되기 때문)
+    - DB에 이미 있는 detail_url  -> 내용이 바뀐 필드만 업데이트, last_seen_at 갱신
+    - DB에 없는 detail_url       -> 새 행으로 INSERT (first_seen_at = 지금)
+    - 이번 크롤링에서 안 보인(목록에서 사라진) 기존 항목 -> is_active = 0 으로
+      표시만 하고 삭제하지 않음 (지난 박람회이거나 목록에서 내려간 것일 수 있음)
+
+사전 준비:
+    pip install requests beautifulsoup4
+
+실행:
+    python sync_to_db.py                       # 기본 DB 경로(sabuzak.db)에 동기화
+    python sync_to_db.py --db ../instance/sabuzak.db
+    python sync_to_db.py --details             # 상세페이지(축제URL/소개)도 함께 동기화
+    python sync_to_db.py --sites bakery,seafood # 일부 카테고리만
+
+주의:
+    이 스크립트는 sabuzak 프로젝트의 실제 Flask-SQLAlchemy 모델(models.py)과는
+    별개로 동작하는 "원본 데이터 테이블"(raw_exhibitions)을 SQLite에 만듭니다.
+    Flask 앱의 Exhibition 모델에 그대로 매핑하고 싶다면, 이 테이블을 조회해서
+    필요한 필드만 옮겨 담는 마이그레이션 코드를 앱 쪽에 추가하면 됩니다.
+    (표 구조는 아래 init_db() 참고 — 필요에 맞게 컬럼을 조정하세요)
+"""
+
+import argparse
+import os
+import sqlite3
+import sys
+from datetime import datetime, timezone
+
+import requests
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import tradefairdates_scraper as tfd
+
+SITES = {
+    "bakery": ("Bakery Trade Shows", "https://www.tradefairdates.com/Bakery-Trade-Shows-Y36-S1.html"),
+    "specialityfinefood": ("Speciality Fine Food Fairs", "https://www.tradefairdates.com/Speciality-Fine-Food-Fairs-Y108-S1.html"),
+    "fancyfood": ("Fancy Food Shows", "https://www.tradefairdates.com/Fancy-Food-Shows-Y82-S1.html"),
+    "seafood": ("Trade fair for Seafood", "https://www.tradefairdates.com/Trade-fair-for-Seafood-Y417-S1.html"),
+    "beer": ("Trade Fairs for Beer", "https://www.tradefairdates.com/Trade-Fairs-for-Beer-Y414-S1.html"),
+    "foodtrade": ("Food Trade Shows", "https://www.tradefairdates.com/Food-Trade-Shows-Y256-S1.html"),
+    "foodfairs": ("Food Fairs", "https://www.tradefairdates.com/Food-Fairs-Y216-S1.html"),
+}
+
+DEFAULT_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sabuzak.db")
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS raw_exhibitions (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    detail_url      TEXT NOT NULL UNIQUE,
+    name            TEXT,
+    period           TEXT,
+    country         TEXT,
+    city            TEXT,
+    venue           TEXT,
+    website         TEXT,
+    intro           TEXT,
+    category        TEXT,
+    is_active       INTEGER NOT NULL DEFAULT 1,
+    first_seen_at   TEXT NOT NULL,
+    last_seen_at    TEXT NOT NULL,
+    last_updated_at TEXT NOT NULL
+);
+"""
+
+
+def now_iso():
+    # 마이크로초까지 포함: 동기화 직후 바로 분류 스크립트가 이어서 돌아도
+    # (같은 초 안에 실행되는 경우) last_updated_at / classified_at 비교가 어긋나지 않도록 함
+    return datetime.now(timezone.utc).isoformat()
+
+
+def init_db(conn):
+    conn.execute(SCHEMA)
+    conn.commit()
+
+
+def row_key(row):
+    return row.get("_detail_url") or (
+        row["전시회명"], row["개최기간"], row["개최장소(베뉴)"]
+    )
+
+
+def crawl_selected_sites(labels_urls, with_details, verbose=True):
+    """여러 카테고리를 순회하며 전체 페이지 수집 + 통합 중복 제거."""
+    all_rows = []
+    seen_keys = set()
+
+    for label, url in labels_urls:
+        if verbose:
+            print(f"\n=== [{label}] 크롤링 시작 ===")
+        try:
+            rows = tfd.crawl_all_pages(url)
+        except requests.exceptions.RequestException as e:
+            print(f"  -> 실패: {e}")
+            continue
+
+        new_rows = []
+        for r in rows:
+            key = row_key(r)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            r["category"] = label
+            new_rows.append(r)
+
+        if verbose:
+            print(f"  -> {label}: 총 {len(rows)}건 중 신규(중복 제외) {len(new_rows)}건")
+        all_rows.extend(new_rows)
+
+    if with_details:
+        total = len(all_rows)
+        print(f"\n=== 상세페이지 수집 시작: 총 {total}건 ===")
+        for i, row in enumerate(all_rows, 1):
+            detail_url = row.get("_detail_url", "")
+            if not detail_url:
+                continue
+            print(f"  [{i}/{total}] {row['전시회명']}")
+            try:
+                detail = tfd.parse_detail(detail_url)
+                row["축제URL"] = detail["축제URL"]
+                row["축제소개"] = detail["축제소개"]
+            except requests.exceptions.RequestException as e:
+                print(f"    -> 실패: {e}")
+            tfd.polite_sleep()
+
+    return all_rows
+
+
+def sync_rows(conn, rows):
+    """크롤링 결과를 DB에 반영. 반환: (신규건수, 업데이트건수, 변경없음건수)"""
+    cur = conn.cursor()
+    ts = now_iso()
+
+    new_count = 0
+    updated_count = 0
+    unchanged_count = 0
+    seen_urls = set()
+
+    for row in rows:
+        detail_url = row.get("_detail_url", "")
+        if not detail_url:
+            continue
+        seen_urls.add(detail_url)
+
+        cur.execute(
+            "SELECT name, period, country, city, venue, website, intro, category "
+            "FROM raw_exhibitions WHERE detail_url = ?",
+            (detail_url,),
+        )
+        existing = cur.fetchone()
+
+        new_values = (
+            row["전시회명"],
+            row["개최기간"],
+            row["개최국"],
+            row["개최도시"],
+            row["개최장소(베뉴)"],
+            row.get("축제URL", ""),
+            row.get("축제소개", ""),
+            row.get("category", ""),
+        )
+
+        if existing is None:
+            cur.execute(
+                """
+                INSERT INTO raw_exhibitions
+                    (detail_url, name, period, country, city, venue, website, intro,
+                     category, is_active, first_seen_at, last_seen_at, last_updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+                """,
+                (detail_url, *new_values, ts, ts, ts),
+            )
+            new_count += 1
+        else:
+            # 상세페이지를 이번에 안 가져왔으면(website/intro가 빈 값) 기존 값 보존
+            merged = list(new_values)
+            if not row.get("축제URL") and existing[5]:
+                merged[5] = existing[5]
+            if not row.get("축제소개") and existing[6]:
+                merged[6] = existing[6]
+
+            changed = tuple(merged) != tuple(existing)
+            if changed:
+                cur.execute(
+                    """
+                    UPDATE raw_exhibitions
+                    SET name=?, period=?, country=?, city=?, venue=?, website=?, intro=?,
+                        category=?, is_active=1, last_seen_at=?, last_updated_at=?
+                    WHERE detail_url=?
+                    """,
+                    (*merged, ts, ts, detail_url),
+                )
+                updated_count += 1
+            else:
+                cur.execute(
+                    "UPDATE raw_exhibitions SET is_active=1, last_seen_at=? WHERE detail_url=?",
+                    (ts, detail_url),
+                )
+                unchanged_count += 1
+
+    conn.commit()
+    return new_count, updated_count, unchanged_count, seen_urls
+
+
+def deactivate_missing(conn, crawled_categories, seen_urls):
+    """이번에 크롤링한 카테고리들 안에서, 더 이상 목록에 없는 기존 항목을 비활성 처리."""
+    cur = conn.cursor()
+    cur.execute(
+        f"SELECT detail_url FROM raw_exhibitions "
+        f"WHERE is_active = 1 AND category IN ({','.join('?' * len(crawled_categories))})",
+        crawled_categories,
+    )
+    existing_active = {r[0] for r in cur.fetchall()}
+    to_deactivate = existing_active - seen_urls
+
+    if to_deactivate:
+        cur.executemany(
+            "UPDATE raw_exhibitions SET is_active = 0 WHERE detail_url = ?",
+            [(u,) for u in to_deactivate],
+        )
+        conn.commit()
+    return len(to_deactivate)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="tradefairdates.com -> SQLite 동기화")
+    parser.add_argument("--db", default=DEFAULT_DB_PATH, help="SQLite DB 파일 경로")
+    parser.add_argument(
+        "--sites",
+        default=",".join(SITES.keys()),
+        help=f"쉼표로 구분한 카테고리 키. 기본값: 전체 ({','.join(SITES.keys())})",
+    )
+    parser.add_argument("--details", action="store_true", help="상세페이지 정보도 함께 수집")
+    parser.add_argument(
+        "--no-deactivate",
+        action="store_true",
+        help="목록에서 사라진 기존 항목을 비활성 처리하지 않음",
+    )
+    args = parser.parse_args()
+
+    site_keys = [k.strip() for k in args.sites.split(",") if k.strip()]
+    unknown = [k for k in site_keys if k not in SITES]
+    if unknown:
+        print(f"알 수 없는 카테고리 키: {unknown}")
+        print(f"사용 가능한 키: {list(SITES.keys())}")
+        sys.exit(1)
+
+    labels_urls = [SITES[k] for k in site_keys]
+    labels = [label for label, _ in labels_urls]
+
+    conn = sqlite3.connect(args.db)
+    init_db(conn)
+
+    rows = crawl_selected_sites(labels_urls, with_details=args.details)
+    new_count, updated_count, unchanged_count, seen_urls = sync_rows(conn, rows)
+
+    deactivated = 0
+    if not args.no_deactivate:
+        deactivated = deactivate_missing(conn, labels, seen_urls)
+
+    conn.close()
+
+    print("\n=== 동기화 완료 ===")
+    print(f"DB 파일: {args.db}")
+    print(f"신규 추가: {new_count}건")
+    print(f"내용 업데이트: {updated_count}건")
+    print(f"변경 없음: {unchanged_count}건")
+    print(f"목록에서 사라져 비활성 처리: {deactivated}건")
+
+
+if __name__ == "__main__":
+    main()

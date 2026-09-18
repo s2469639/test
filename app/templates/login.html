@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>사부작 로그인</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+</head>
+<body class="login-page">
+  <form class="login-card" method="post">
+    <div class="brand-icon large">✦</div>
+    <h1>사부작</h1>
+    <p class="brand-sub">박람회 운영 자동화 대시보드</p>
+
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+    <label>아이디
+      <input type="text" name="username" placeholder="아이디를 입력하세요">
+    </label>
+    <label>비밀번호
+      <input type="password" name="password" placeholder="비밀번호를 입력하세요">
+    </label>
+    <button type="submit">로그인</button>
+    <p class="hint">사부작 내부 시스템 — 임직원 전용</p>
+  </form>
+</body>
+</html>

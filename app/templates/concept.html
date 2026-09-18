@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}부스 컨셉 기획{% endblock %}
+{% block content %}
+  <p class="breadcrumb">
+    <a href="{{ url_for('exhibition.detail', exhibition_id=exhibition.id) }}">← 박람회 상세</a>
+  </p>
+  <header class="page-header">
+    <h1>부스 컨셉 기획</h1>
+    <p>{{ exhibition.name }} · {{ exhibition.country }}</p>
+  </header>
+
+  <div id="concept-empty" class="empty-state" {% if draft %}hidden{% endif %}>
+    <div class="brand-icon">✦</div>
+    <h2>AI 컨셉 자동 생성</h2>
+    <p>{{ exhibition.name }} 시장조사 데이터를 분석해 부스 컨셉을 생성합니다</p>
+    <button id="generate-concept-btn" data-exhibition-id="{{ exhibition.id }}">컨셉 자동 생성하기</button>
+  </div>
+
+  <form id="concept-form" {% if not draft %}hidden{% endif %}>
+    <label>테마 <input type="text" name="theme" value="{{ draft.theme if draft else '' }}"></label>
+    <label>슬로건 <input type="text" name="slogan" value="{{ draft.slogan if draft else '' }}"></label>
+    <label>핵심 셀링포인트 <textarea name="selling_points">{{ draft.selling_points if draft else '' }}</textarea></label>
+    <label>이벤트 기획안 <textarea name="event_plan">{{ draft.event_plan if draft else '' }}</textarea></label>
+    <button type="submit">초안 저장</button>
+  </form>
+{% endblock %}
+{% block scripts %}
+  <script src="{{ url_for('static', filename='js/concept.js') }}"></script>
+{% endblock %}

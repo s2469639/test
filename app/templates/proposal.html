@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}기안서 작성{% endblock %}
+{% block content %}
+  <p class="breadcrumb">
+    <a href="{{ url_for('concept.edit', exhibition_id=exhibition.id) }}">← 부스 컨셉 기획</a>
+  </p>
+  <header class="page-header">
+    <h1>기안서 작성</h1>
+    <p>{{ exhibition.name }} · {{ exhibition.country }}</p>
+  </header>
+
+  <button id="generate-proposal-btn" data-exhibition-id="{{ exhibition.id }}">기안서 자동 생성하기</button>
+
+  <form id="proposal-form">
+    <textarea name="content" rows="20">{{ draft.content if draft else '' }}</textarea>
+    <div class="actions">
+      <button type="submit">초안 저장</button>
+      <a href="{{ url_for('proposal.export_as_pdf', exhibition_id=exhibition.id) }}">PDF 출력</a>
+      <a href="{{ url_for('proposal.export_as_word', exhibition_id=exhibition.id) }}">Word 출력</a>
+    </div>
+  </form>
+{% endblock %}
+{% block scripts %}
+  <script src="{{ url_for('static', filename='js/proposal.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}박람회 운영 대시보드{% endblock %}
+{% block content %}
+  <header class="page-header">
+    <h1>박람회 운영 대시보드</h1>
+    <p>지도에서 핀을 클릭해 대륙별 박람회를 확인하세요</p>
+  </header>
+
+  <div id="world-map" class="world-map" data-counts='{{ counts | tojson }}'></div>
+{% endblock %}
+{% block scripts %}
+  <script src="{{ url_for('static', filename='js/map.js') }}"></script>
+{% endblock %}

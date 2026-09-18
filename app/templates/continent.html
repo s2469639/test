@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}{{ continent }} 박람회 목록{% endblock %}
+{% block content %}
+  <header class="page-header">
+    <h1>{{ continent }} 박람회</h1>
+  </header>
+
+  <ul class="exhibition-list">
+    {% for e in exhibitions %}
+      <li>
+        <a href="{{ url_for('exhibition.detail', exhibition_id=e.id) }}">
+          <strong>{{ e.name }}</strong>
+          <span>{{ e.country }} · {{ e.period }}</span>
+        </a>
+      </li>
+    {% else %}
+      <li>등록된 박람회가 없습니다.</li>
+    {% endfor %}
+  </ul>
+{% endblock %}
