@@ -38,6 +38,7 @@ def classify_exhibition(row):
     - 박람회명(name): {row.get('name', '')}
     - 국가(country): {row.get('country', '')}
     - 웹사이트(website): {row.get('website', '')}
+    - 참관대상 원문(audience note): {row.get('참관대상', '') or '(정보 없음)'}
     - 소개(intro): {row.get('intro', '')}
 
     [분류 조건]
@@ -51,6 +52,15 @@ def classify_exhibition(row):
        - 소: 참가기업 300개 사 미만, 방문객 10,000명 미만
        - 미상: 통계 미공개 또는 신생 행사
     4) 거래고객 유형: 'B2B', 'B2C' (둘 다 해당하면 'B2B, B2C')
+       - 참관대상 원문을 최우선 근거로 판단할 것:
+         · "professional visitors only", "trade only", "trade visitors only",
+           "business visitors only" 등 업계 관계자로 한정하는 문구가 있으면 -> B2B
+         · "general public", "open to public", "public welcome" 등 일반 소비자
+           참관을 허용하는 문구가 있으면 -> B2C
+         · 위 두 성격이 함께 언급되면(예: "trade and public days") -> 'B2B, B2C'
+       - 참관대상 원문이 없거나 위 문구로 판단이 안 되면, 소개(intro) 문맥에서
+         바이어/유통업체/셀러 중심이면 B2B, 일반 소비자 대상 행사로 보이면 B2C로
+         판단하고, 그래도 불명확하면 무역 박람회 특성상 기본값으로 'B2B'를 선택
     5) 키워드: 아래 표준 키워드 풀에서 가장 적절한 단어 정확히 5개를 골라 쉼표(,)로 구분하여 작성
        [표준 키워드 풀]
        - 산업/품목군: 식품/음료종합, 제과/베이커리, 가공식품, 건강/기능성, 주류/음료, 수산/해양식품, 축산/육가공, 식자재, 식품원료/소재

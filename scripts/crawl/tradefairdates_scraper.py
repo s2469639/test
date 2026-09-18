@@ -67,6 +67,7 @@ FIELDNAMES = [
     "개최국",
     "개최도시",
     "개최장소(베뉴)",
+    "참관대상",
     "축제URL",
     "축제소개",
 ]
@@ -123,6 +124,11 @@ def parse_tile(tile) -> dict:
     zentrum_span = inner.select_one("span.messeTerminZentrum")
     venue = text_or_empty(zentrum_span)
 
+    # 참관대상 (예: "professional visitors only", "general public")
+    # B2B/B2C 판단의 핵심 근거이므로 목록 페이지에서 바로 수집
+    zutritt_p = inner.select_one("p.zutritt")
+    audience = text_or_empty(zutritt_p)
+
     if not any([name, date_text, country, city, venue]):
         return None
 
@@ -134,6 +140,7 @@ def parse_tile(tile) -> dict:
         "개최국": country,
         "개최도시": city,
         "개최장소(베뉴)": venue,
+        "참관대상": audience,
         "축제URL": "",
         "축제소개": "",
         "_detail_url": detail_url,

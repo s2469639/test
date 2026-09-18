@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS raw_exhibitions (
     country         TEXT,
     city            TEXT,
     venue           TEXT,
+    audience_note   TEXT,
     website         TEXT,
     intro           TEXT,
     category        TEXT,
@@ -83,6 +84,11 @@ def now_iso():
 
 def init_db(conn):
     conn.execute(SCHEMA)
+    # 기존에 만들어진 DB(CREATE TABLE IF NOT EXISTS로는 컬럼이 안 늘어남)에도
+    # audience_note가 없으면 추가해준다.
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(raw_exhibitions)")}
+    if "audience_note" not in cols:
+        conn.execute("ALTER TABLE raw_exhibitions ADD COLUMN audience_note TEXT")
     conn.commit()
 
 
@@ -155,7 +161,7 @@ def sync_rows(conn, rows):
         seen_urls.add(detail_url)
 
         cur.execute(
-            "SELECT name, period, country, city, venue, website, intro, category "
+            "SELECT name, period, country, city, venue, audience_note, website, intro, category "
             "FROM raw_exhibitions WHERE detail_url = ?",
             (detail_url,),
         )
@@ -167,6 +173,7 @@ def sync_rows(conn, rows):
             row["개최국"],
             row["개최도시"],
             row["개최장소(베뉴)"],
+            row.get("참관대상", ""),
             row.get("축제URL", ""),
             row.get("축제소개", ""),
             row.get("category", ""),
@@ -176,9 +183,9 @@ def sync_rows(conn, rows):
             cur.execute(
                 """
                 INSERT INTO raw_exhibitions
-                    (detail_url, name, period, country, city, venue, website, intro,
+                    (detail_url, name, period, country, city, venue, audience_note, website, intro,
                      category, is_active, first_seen_at, last_seen_at, last_updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
                 """,
                 (detail_url, *new_values, ts, ts, ts),
             )
@@ -186,17 +193,17 @@ def sync_rows(conn, rows):
         else:
             # 상세페이지를 이번에 안 가져왔으면(website/intro가 빈 값) 기존 값 보존
             merged = list(new_values)
-            if not row.get("축제URL") and existing[5]:
-                merged[5] = existing[5]
-            if not row.get("축제소개") and existing[6]:
+            if not row.get("축제URL") and existing[6]:
                 merged[6] = existing[6]
+            if not row.get("축제소개") and existing[7]:
+                merged[7] = existing[7]
 
             changed = tuple(merged) != tuple(existing)
             if changed:
                 cur.execute(
                     """
                     UPDATE raw_exhibitions
-                    SET name=?, period=?, country=?, city=?, venue=?, website=?, intro=?,
+                    SET name=?, period=?, country=?, city=?, venue=?, audience_note=?, website=?, intro=?,
                         category=?, is_active=1, last_seen_at=?, last_updated_at=?
                     WHERE detail_url=?
                     """,

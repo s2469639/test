@@ -26,8 +26,13 @@ def main():
         raise FileNotFoundError(f"DB 파일을 찾을 수 없습니다: {args.db}")
 
     conn = sqlite3.connect(args.db)
+    # audience_note는 최근에 추가된 컬럼이라, sync_to_db.py를 다시 돌리기 전의
+    # 기존 DB에는 없을 수 있음 -> 있으면 쓰고 없으면 빈 값으로 채움
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(raw_exhibitions)")}
+    audience_expr = "audience_note" if "audience_note" in cols else "''"
+
     cur = conn.execute(
-        "SELECT name, country, website, intro FROM raw_exhibitions "
+        f"SELECT name, country, website, {audience_expr}, intro FROM raw_exhibitions "
         "WHERE is_active = 1 LIMIT ?",
         (args.limit,),
     )
@@ -36,7 +41,7 @@ def main():
 
     with open(args.out, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f)
-        writer.writerow(["name", "country", "website", "intro"])
+        writer.writerow(["name", "country", "website", "참관대상", "intro"])
         writer.writerows(rows)
 
     print(f"{len(rows)}건 저장 완료 -> {args.out}")
