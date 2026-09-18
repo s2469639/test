@@ -22,6 +22,16 @@
       <div class="card"><label>개최기간</label><p>{{ exhibition.start_date | period(exhibition.end_date) }}</p></div>
       <div class="card"><label>규모</label><p>{{ exhibition.scale or "미상" }}</p></div>
       <div class="card">
+        <label>식품 전시회 여부</label>
+        <p>
+          {% if exhibition.classified_at %}
+            <span class="badge {{ 'yes' if exhibition.food_yn else 'no' }}">{{ '식품' if exhibition.food_yn else '비식품' }}</span>
+          {% else %}
+            <span class="badge unclassified">미분류</span>
+          {% endif %}
+        </p>
+      </div>
+      <div class="card">
         <label>참관대상</label>
         <p>
           {% if exhibition.audience_type and exhibition.audience_type != "미상" %}
