@@ -14,6 +14,9 @@ def create_app(config_object="config.Config"):
     from .routes import register_blueprints
     register_blueprints(app)
 
+    from .services.data import format_period
+    app.jinja_env.filters["period"] = format_period
+
     @app.cli.command("init-db")
     def init_db():
         """테이블 생성 (raw_exhibitions는 scripts/crawl/sync_to_db.py가 채움)."""

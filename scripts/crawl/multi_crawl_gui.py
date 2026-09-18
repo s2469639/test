@@ -47,7 +47,7 @@ FIELDNAMES = ["출처카테고리"] + tfd.FIELDNAMES
 
 def row_key(row):
     return row.get("_detail_url") or (
-        row["전시회명"], row["개최기간"], row["개최장소(베뉴)"]
+        row["전시회명"], row["시작일"], row["종료일"], row["개최장소(베뉴)"]
     )
 
 

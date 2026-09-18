@@ -63,7 +63,8 @@ def polite_sleep():
 
 FIELDNAMES = [
     "전시회명",
-    "개최기간",
+    "시작일",
+    "종료일",
     "개최국",
     "개최도시",
     "개최장소(베뉴)",
@@ -71,6 +72,71 @@ FIELDNAMES = [
     "축제URL",
     "축제소개",
 ]
+
+MONTHS = {
+    "january": 1, "february": 2, "march": 3, "april": 4,
+    "may": 5, "june": 6, "july": 7, "august": 8,
+    "september": 9, "october": 10, "november": 11, "december": 12,
+}
+
+# tileHeader의 div.time에 나오는 개최기간 텍스트를 (시작일, 종료일) 숫자(YYYYMMDD)로 변환.
+# - 날짜 자체가 없으면(예: "Date Still Unknown") 0
+# - 일자까지는 모르고 달만 아는 경우(예: "Expected in October 2027")는 일(day)을 32로 채워
+#   그 달의 실제 날짜들보다 항상 뒤로 정렬되게 함
+_SINGLE_DAY_RE = re.compile(r"^(\d{1,2})\.\s+([A-Za-z]+)\s+(\d{4})$")
+_SAME_MONTH_RANGE_RE = re.compile(r"^(\d{1,2})\.\s*-\s*(\d{1,2})\.\s+([A-Za-z]+)\s+(\d{4})$")
+_CROSS_MONTH_RANGE_RE = re.compile(
+    r"^(\d{1,2})\.\s+([A-Za-z]+)\s*-\s*(\d{1,2})\.\s+([A-Za-z]+)\s+(\d{4})$"
+)
+_MONTH_ONLY_RE = re.compile(r"([A-Za-z]+)\s+(\d{4})")
+
+
+def _ymd(year, month, day):
+    return year * 10000 + month * 100 + day
+
+
+def parse_period(period_text: str):
+    """개최기간 원문 -> (시작일, 종료일) 숫자(YYYYMMDD) 튜플."""
+    text = (period_text or "").strip()
+    if not text:
+        return 0, 0
+
+    m = _SAME_MONTH_RANGE_RE.match(text)
+    if m:
+        start_day, end_day, month_name, year = m.groups()
+        month = MONTHS.get(month_name.lower())
+        if month:
+            year = int(year)
+            return _ymd(year, month, int(start_day)), _ymd(year, month, int(end_day))
+
+    m = _CROSS_MONTH_RANGE_RE.match(text)
+    if m:
+        start_day, start_month_name, end_day, end_month_name, year = m.groups()
+        start_month = MONTHS.get(start_month_name.lower())
+        end_month = MONTHS.get(end_month_name.lower())
+        if start_month and end_month:
+            year = int(year)
+            return _ymd(year, start_month, int(start_day)), _ymd(year, end_month, int(end_day))
+
+    m = _SINGLE_DAY_RE.match(text)
+    if m:
+        day, month_name, year = m.groups()
+        month = MONTHS.get(month_name.lower())
+        if month:
+            date = _ymd(int(year), month, int(day))
+            return date, date
+
+    # 일자 미상, 달/연도만 아는 경우 (예: "Expected in October 2027")
+    m = _MONTH_ONLY_RE.search(text)
+    if m:
+        month_name, year = m.groups()
+        month = MONTHS.get(month_name.lower())
+        if month:
+            date = _ymd(int(year), month, 32)
+            return date, date
+
+    # 그 외(예: "Date Still Unknown")는 날짜 미상
+    return 0, 0
 
 
 def fetch_html(url: str) -> str:
@@ -133,10 +199,12 @@ def parse_tile(tile) -> dict:
         return None
 
     detail_url = urljoin(BASE_URL, title_a["href"]) if title_a and title_a.get("href") else ""
+    start_date, end_date = parse_period(date_text)
 
     return {
         "전시회명": name,
-        "개최기간": date_text,
+        "시작일": start_date,
+        "종료일": end_date,
         "개최국": country,
         "개최도시": city,
         "개최장소(베뉴)": venue,

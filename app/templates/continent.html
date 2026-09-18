@@ -10,7 +10,7 @@
       <li>
         <a href="{{ url_for('exhibition.detail', exhibition_id=e.id) }}">
           <strong>{{ e.name }}</strong>
-          <span>{{ e.country }} · {{ e.period }}</span>
+          <span>{{ e.country }} · {{ e.start_date | period(e.end_date) }}</span>
         </a>
       </li>
     {% else %}

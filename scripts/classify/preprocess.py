@@ -22,8 +22,10 @@ if not os.path.exists(input_file):
 
 df = pd.read_csv(input_file)
 
-# 2. 새로운 5개 칼럼 초기화 (기존 내용 삭제/변경 방지)
-new_columns = ["대륙", "food_yn", "규모", "거래고객 유형", "키워드"]
+# 2. 새로운 4개 칼럼 초기화 (기존 내용 삭제/변경 방지)
+# 거래고객 유형(B2B/B2C)은 별도 분류 없이 raw_exhibitions의 참관대상 원문 컬럼을
+# 그대로 보여주는 쪽으로 바뀌어서 여기서는 더 이상 만들지 않음
+new_columns = ["대륙", "food_yn", "규모", "키워드"]
 for col in new_columns:
   if col not in df.columns:
     df[col] = None
@@ -32,7 +34,7 @@ for col in new_columns:
 def classify_exhibition(row):
   """OpenAI API를 사용하여 각 박람회 정보를 조건에 맞게 분류"""
   prompt = f"""
-    당신은 글로벌 박람회 데이터 분석 전문가입니다. 아래 박람회 정보를 바탕으로 5가지 항목을 정확히 분류해주세요.
+    당신은 글로벌 박람회 데이터 분석 전문가입니다. 아래 박람회 정보를 바탕으로 4가지 항목을 정확히 분류해주세요.
 
     [박람회 정보]
     - 박람회명(name): {row.get('name', '')}
@@ -51,17 +53,7 @@ def classify_exhibition(row):
        - 중: 참가기업 300 ~ 999개 사, 방문객 10,000 ~ 29,999명
        - 소: 참가기업 300개 사 미만, 방문객 10,000명 미만
        - 미상: 통계 미공개 또는 신생 행사
-    4) 거래고객 유형: 'B2B', 'B2C' (둘 다 해당하면 'B2B, B2C')
-       - 참관대상 원문을 최우선 근거로 판단할 것:
-         · "professional visitors only", "trade only", "trade visitors only",
-           "business visitors only" 등 업계 관계자로 한정하는 문구가 있으면 -> B2B
-         · "general public", "open to public", "public welcome" 등 일반 소비자
-           참관을 허용하는 문구가 있으면 -> B2C
-         · 위 두 성격이 함께 언급되면(예: "trade and public days") -> 'B2B, B2C'
-       - 참관대상 원문이 없거나 위 문구로 판단이 안 되면, 소개(intro) 문맥에서
-         바이어/유통업체/셀러 중심이면 B2B, 일반 소비자 대상 행사로 보이면 B2C로
-         판단하고, 그래도 불명확하면 무역 박람회 특성상 기본값으로 'B2B'를 선택
-    5) 키워드: 아래 표준 키워드 풀에서 가장 적절한 단어 정확히 5개를 골라 쉼표(,)로 구분하여 작성
+    4) 키워드: 아래 표준 키워드 풀에서 가장 적절한 단어 정확히 5개를 골라 쉼표(,)로 구분하여 작성
        [표준 키워드 풀]
        - 산업/품목군: 식품/음료종합, 제과/베이커리, 가공식품, 건강/기능성, 주류/음료, 수산/해양식품, 축산/육가공, 식자재, 식품원료/소재
        - 라이프/트렌드: 웰니스/비건, 친환경/유기농, 호스피탈리티, 외식/HORECA, 프리미엄미식, 지역특산물
@@ -72,7 +64,6 @@ def classify_exhibition(row):
       "대륙": "...",
       "food_yn": true,
       "규모": "...",
-      "거래고객 유형": "...",
       "키워드": "키워드1, 키워드2, 키워드3, 키워드4, 키워드5"
     }}
     """
@@ -92,7 +83,6 @@ def classify_exhibition(row):
             "대륙": "미상",
             "food_yn": False,
             "규모": "미상",
-            "거래고객 유형": "B2B",
             "키워드": "",
         }
     )

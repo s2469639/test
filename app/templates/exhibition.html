@@ -19,14 +19,16 @@
     <div class="card-grid">
       <div class="card"><label>개최지</label><p>{{ exhibition.country }} · {{ exhibition.city }}</p></div>
       <div class="card"><label>개최장소</label><p>{{ exhibition.venue }}</p></div>
+      <div class="card"><label>개최기간</label><p>{{ exhibition.start_date | period(exhibition.end_date) }}</p></div>
       <div class="card"><label>규모</label><p>{{ exhibition.scale or "미상" }}</p></div>
-      <div class="card"><label>카테고리</label><p>{{ exhibition.category }}</p></div>
+      <div class="card"><label>참관대상</label><p>{{ exhibition.audience_note or "정보 없음" }}</p></div>
       <div class="card"><label>환율 (USD→KRW)</label><p>{{ exchange_rate if exchange_rate is not none else "조회 실패" }}</p></div>
     </div>
     <div class="card">
       <label>공식 소개</label>
       <p>{{ exhibition.intro }}</p>
     </div>
+    <p class="updated-at">마지막 업데이트: {{ exhibition.last_updated_at }}</p>
   </section>
 
   <section data-tab-panel="market" class="tab-panel">

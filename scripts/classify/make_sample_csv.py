@@ -26,13 +26,16 @@ def main():
         raise FileNotFoundError(f"DB 파일을 찾을 수 없습니다: {args.db}")
 
     conn = sqlite3.connect(args.db)
-    # audience_note는 최근에 추가된 컬럼이라, sync_to_db.py를 다시 돌리기 전의
-    # 기존 DB에는 없을 수 있음 -> 있으면 쓰고 없으면 빈 값으로 채움
     cols = {row[1] for row in conn.execute("PRAGMA table_info(raw_exhibitions)")}
-    audience_expr = "audience_note" if "audience_note" in cols else "''"
+    if "박람회명" not in cols:
+        raise RuntimeError(
+            "이 DB는 아직 예전 스키마입니다. 먼저 "
+            "`python ../crawl/sync_to_db.py --db <이 DB 경로>`를 한 번 실행해서 "
+            "새 스키마로 마이그레이션한 뒤 다시 시도해주세요."
+        )
 
     cur = conn.execute(
-        f"SELECT name, country, website, {audience_expr}, intro FROM raw_exhibitions "
+        'SELECT "박람회명", "국가", "웹사이트", "참관대상", "상세설명" FROM raw_exhibitions '
         "WHERE is_active = 1 LIMIT ?",
         (args.limit,),
     )

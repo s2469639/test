@@ -1,5 +1,5 @@
-"""부스 컨셉 / 기안서 자동 생성. scripts/classify/classify_with_openai.py 와
-같은 OpenAI 클라이언트 설정을 재사용한다."""
+"""부스 컨셉 / 기안서 자동 생성. scripts/classify/preprocess.py와 같은
+OpenAI 클라이언트 설정을 재사용한다."""
 
 import os
 
@@ -16,7 +16,9 @@ def generate_booth_concept(exhibition):
     prompt = (
         f"박람회명: {exhibition.name}\n"
         f"국가: {exhibition.country}\n"
-        f"제품 적합도: {exhibition.product_fit}\n"
+        f"규모: {exhibition.scale}\n"
+        f"키워드: {exhibition.keywords}\n"
+        f"참관대상: {exhibition.audience_note}\n"
         f"소개: {exhibition.intro}\n\n"
         "이 박람회에 맞는 부스 테마, 슬로건, 핵심 셀링포인트, 이벤트 기획안을 제안해줘."
     )

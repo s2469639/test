@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
 """
+[DEPRECATED] scripts/classify/preprocess.py로 대체됨.
+
+raw_exhibitions 스키마가 (박람회명/시작일/종료일/참관대상 등 한글 컬럼 + 대륙/food_yn/규모/키워드)
+로 바뀌면서, 이 스크립트가 쓰던 continent/product_fit/scale/audience_type 영문 컬럼 체계는
+더 이상 앱이 참조하지 않음. 참고용으로만 남겨둠 — 그대로 실행하면 새 스키마와 이름이
+겹치지 않는 별도의 영문 컬럼들이 추가될 뿐, raw_exhibitions의 대륙/규모 컬럼과 연동되지 않음.
+
 raw_exhibitions(SQLite) 테이블의 박람회를 OpenAI API로 자동 분류하는 스크립트.
 
 sync_to_db.py 로 크롤링/적재를 마친 뒤 이 스크립트를 실행하면:

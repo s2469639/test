@@ -10,8 +10,9 @@ tradefairdates.com 크롤링 -> SQLite DB 동기화 스크립트
 핵심 아이디어:
     - 각 박람회의 상세페이지 URL(detail_url)을 "고유 키"로 사용합니다.
       (tradefairdates.com에서 박람회마다 URL이 고유하게 부여되기 때문)
-    - DB에 이미 있는 detail_url  -> 내용이 바뀐 필드만 업데이트, last_seen_at 갱신
-    - DB에 없는 detail_url       -> 새 행으로 INSERT (first_seen_at = 지금)
+    - DB에 이미 있는 detail_url  -> 내용이 바뀐 필드만 업데이트 (이름이 같아도
+      시작일/종료일이 바뀌면 업데이트 대상), last_updated_at 갱신
+    - DB에 없는 detail_url       -> 새 행으로 INSERT
     - 이번 크롤링에서 안 보인(목록에서 사라진) 기존 항목 -> is_active = 0 으로
       표시만 하고 삭제하지 않음 (지난 박람회이거나 목록에서 내려간 것일 수 있음)
 
@@ -55,25 +56,38 @@ SITES = {
 
 DEFAULT_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sabuzak.db")
 
+# detail_url(크롤링 dedup용 내부 키)과 category(부분 크롤링 시 비활성화 범위 판단용 내부 키)는
+# 앱에서 직접 보여줄 컬럼이 아니라서 영문 이름 그대로 둔다. 나머지는 사용자가 보게 될 컬럼이라
+# 한글 컬럼명을 그대로 SQLite 컬럼명으로 쓴다 (Python 쪽에서는 app/models.py가 영문 속성명으로
+# db.Column("박람회명", ...) 식으로 매핑해서 읽는다).
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS raw_exhibitions (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    detail_url      TEXT NOT NULL UNIQUE,
-    name            TEXT,
-    period           TEXT,
-    country         TEXT,
-    city            TEXT,
-    venue           TEXT,
-    audience_note   TEXT,
-    website         TEXT,
-    intro           TEXT,
-    category        TEXT,
-    is_active       INTEGER NOT NULL DEFAULT 1,
-    first_seen_at   TEXT NOT NULL,
-    last_seen_at    TEXT NOT NULL,
-    last_updated_at TEXT NOT NULL
+    "순번"           INTEGER PRIMARY KEY AUTOINCREMENT,
+    detail_url        TEXT NOT NULL UNIQUE,
+    "박람회명"        TEXT,
+    "시작일"          INTEGER,
+    "종료일"          INTEGER,
+    "국가"            TEXT,
+    "도시"            TEXT,
+    "장소"            TEXT,
+    "참관대상"        TEXT,
+    "웹사이트"        TEXT,
+    "상세설명"        TEXT,
+    category           TEXT,
+    "대륙"            TEXT,
+    food_yn            INTEGER,
+    "규모"            TEXT,
+    "키워드"          TEXT,
+    is_active          INTEGER NOT NULL DEFAULT 1,
+    last_updated_at    TEXT NOT NULL
 );
 """
+
+NEW_COLUMNS = [
+    "순번", "detail_url", "박람회명", "시작일", "종료일", "국가", "도시", "장소",
+    "참관대상", "웹사이트", "상세설명", "category", "대륙", "food_yn", "규모", "키워드",
+    "is_active", "last_updated_at",
+]
 
 
 def now_iso():
@@ -82,19 +96,97 @@ def now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
+def _table_exists(conn, name):
+    return conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
+    ).fetchone() is not None
+
+
+def _old_row_to_new(old_cols, row):
+    """예전 스키마(영문 컬럼명, period 하나, first_seen_at/last_seen_at 포함 등)의
+    한 행을 새 스키마 값으로 변환. old_cols는 {컬럼명}, row는 dict."""
+
+    def pick(*names, default=None):
+        for n in names:
+            if n in old_cols and row.get(n) is not None:
+                return row[n]
+        return default
+
+    start_date = pick("시작일", default=None)
+    end_date = pick("종료일", default=None)
+    if start_date is None and "period" in old_cols:
+        start_date, end_date = tfd.parse_period(row.get("period", ""))
+    start_date = start_date if start_date is not None else 0
+    end_date = end_date if end_date is not None else 0
+
+    return {
+        "detail_url": row.get("detail_url"),
+        "박람회명": pick("박람회명", "name", default=""),
+        "시작일": start_date,
+        "종료일": end_date,
+        "국가": pick("국가", "country", default=""),
+        "도시": pick("도시", "city", default=""),
+        "장소": pick("장소", "venue", default=""),
+        "참관대상": pick("참관대상", "audience_note", default=""),
+        "웹사이트": pick("웹사이트", "website", default=""),
+        "상세설명": pick("상세설명", "intro", default=""),
+        "category": pick("category", default=""),
+        "대륙": pick("대륙", "continent", default=None),
+        "food_yn": pick("food_yn", default=None),
+        "규모": pick("규모", "scale", default=None),
+        "키워드": pick("키워드", default=None),
+        "is_active": pick("is_active", default=1),
+        "last_updated_at": pick("last_updated_at", default=now_iso()),
+    }
+
+
 def init_db(conn):
-    conn.execute(SCHEMA)
-    # 기존에 만들어진 DB(CREATE TABLE IF NOT EXISTS로는 컬럼이 안 늘어남)에도
-    # audience_note가 없으면 추가해준다.
+    """raw_exhibitions를 최신 스키마로 만든다. 테이블이 없으면 새로 만들고,
+    예전 스키마로 이미 있으면 데이터를 보존하면서 새 스키마로 옮긴다."""
+    if not _table_exists(conn, "raw_exhibitions"):
+        conn.execute(SCHEMA)
+        conn.commit()
+        return
+
     cols = {row[1] for row in conn.execute("PRAGMA table_info(raw_exhibitions)")}
-    if "audience_note" not in cols:
-        conn.execute("ALTER TABLE raw_exhibitions ADD COLUMN audience_note TEXT")
+    if cols == set(NEW_COLUMNS):
+        return  # 이미 최신 스키마
+
+    print("  -> 예전 스키마 감지, 데이터를 보존하며 새 스키마로 마이그레이션합니다...")
+    conn.row_factory = sqlite3.Row
+    old_rows = [dict(r) for r in conn.execute("SELECT * FROM raw_exhibitions")]
+    conn.row_factory = None
+
+    conn.execute("ALTER TABLE raw_exhibitions RENAME TO raw_exhibitions_old")
+    conn.execute(SCHEMA)
+
+    for row in old_rows:
+        new_row = _old_row_to_new(set(row.keys()), row)
+        conn.execute(
+            """
+            INSERT INTO raw_exhibitions
+                (detail_url, "박람회명", "시작일", "종료일", "국가", "도시", "장소",
+                 "참관대상", "웹사이트", "상세설명", category, "대륙", food_yn, "규모", "키워드",
+                 is_active, last_updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                new_row["detail_url"], new_row["박람회명"], new_row["시작일"], new_row["종료일"],
+                new_row["국가"], new_row["도시"], new_row["장소"], new_row["참관대상"],
+                new_row["웹사이트"], new_row["상세설명"], new_row["category"], new_row["대륙"],
+                new_row["food_yn"], new_row["규모"], new_row["키워드"],
+                new_row["is_active"], new_row["last_updated_at"],
+            ),
+        )
+
+    conn.execute("DROP TABLE raw_exhibitions_old")
     conn.commit()
+    print(f"  -> 마이그레이션 완료: {len(old_rows)}건 이전됨")
 
 
 def row_key(row):
     return row.get("_detail_url") or (
-        row["전시회명"], row["개최기간"], row["개최장소(베뉴)"]
+        row["전시회명"], row["시작일"], row["종료일"], row["개최장소(베뉴)"]
     )
 
 
@@ -161,15 +253,18 @@ def sync_rows(conn, rows):
         seen_urls.add(detail_url)
 
         cur.execute(
-            "SELECT name, period, country, city, venue, audience_note, website, intro, category "
-            "FROM raw_exhibitions WHERE detail_url = ?",
+            'SELECT "박람회명", "시작일", "종료일", "국가", "도시", "장소", "참관대상", '
+            '"웹사이트", "상세설명", category FROM raw_exhibitions WHERE detail_url = ?',
             (detail_url,),
         )
         existing = cur.fetchone()
 
+        # 이름이 같아도 날짜(시작일/종료일)가 바뀌면 다른 값으로 취급되어 아래
+        # changed 비교에서 자동으로 업데이트 대상이 된다.
         new_values = (
             row["전시회명"],
-            row["개최기간"],
+            row["시작일"],
+            row["종료일"],
             row["개최국"],
             row["개최도시"],
             row["개최장소(베뉴)"],
@@ -183,37 +278,38 @@ def sync_rows(conn, rows):
             cur.execute(
                 """
                 INSERT INTO raw_exhibitions
-                    (detail_url, name, period, country, city, venue, audience_note, website, intro,
-                     category, is_active, first_seen_at, last_seen_at, last_updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+                    (detail_url, "박람회명", "시작일", "종료일", "국가", "도시", "장소",
+                     "참관대상", "웹사이트", "상세설명", category, is_active, last_updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
                 """,
-                (detail_url, *new_values, ts, ts, ts),
+                (detail_url, *new_values, ts),
             )
             new_count += 1
         else:
-            # 상세페이지를 이번에 안 가져왔으면(website/intro가 빈 값) 기존 값 보존
+            # 상세페이지를 이번에 안 가져왔으면(웹사이트/상세설명이 빈 값) 기존 값 보존
             merged = list(new_values)
-            if not row.get("축제URL") and existing[6]:
-                merged[6] = existing[6]
-            if not row.get("축제소개") and existing[7]:
+            if not row.get("축제URL") and existing[7]:
                 merged[7] = existing[7]
+            if not row.get("축제소개") and existing[8]:
+                merged[8] = existing[8]
 
             changed = tuple(merged) != tuple(existing)
             if changed:
                 cur.execute(
                     """
                     UPDATE raw_exhibitions
-                    SET name=?, period=?, country=?, city=?, venue=?, audience_note=?, website=?, intro=?,
-                        category=?, is_active=1, last_seen_at=?, last_updated_at=?
+                    SET "박람회명"=?, "시작일"=?, "종료일"=?, "국가"=?, "도시"=?, "장소"=?,
+                        "참관대상"=?, "웹사이트"=?, "상세설명"=?, category=?, is_active=1,
+                        last_updated_at=?
                     WHERE detail_url=?
                     """,
-                    (*merged, ts, ts, detail_url),
+                    (*merged, ts, detail_url),
                 )
                 updated_count += 1
             else:
                 cur.execute(
-                    "UPDATE raw_exhibitions SET is_active=1, last_seen_at=? WHERE detail_url=?",
-                    (ts, detail_url),
+                    "UPDATE raw_exhibitions SET is_active=1 WHERE detail_url=?",
+                    (detail_url,),
                 )
                 unchanged_count += 1
 
