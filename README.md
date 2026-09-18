@@ -82,9 +82,10 @@ python scripts/classify/classify_with_openai.py --db instance/sabuzak.db
 - `scripts/crawl/sync_to_db.py` — 7개 카테고리 통합 크롤링 + `raw_exhibitions` 증분 동기화 (신규/변경 감지, 목록에서 사라진 항목은 삭제 대신 비활성 처리)
 - `scripts/crawl/multi_crawl_gui.py` — 위 크롤링을 수동으로 실행할 때 쓰는 내부용 GUI(tkinter) 도구, CSV로도 저장 가능
 - `scripts/crawl/kotra_support_crawler.py` — KOTRA 정부 지원사업 공고 크롤러
-- `scripts/classify/classify_with_openai.py` — 미분류/재분류 필요 박람회만 OpenAI로 분류해 같은 DB에 저장 (API 비용 절감)
+- `scripts/classify/classify_with_openai.py` — (DB 기반) 미분류/재분류 필요 박람회만 OpenAI로 분류해 `raw_exhibitions`에 저장. 분류 기준: 대륙 / 제품 적합도(김부각·유과·약과·누룽지칩·고구마스틱) / 규모 / 거래유형
+- `scripts/classify/preprocess.py` — (CSV 기반) `원본.csv` → `clean.csv`. 분류 기준: 대륙 / `food_yn`(식품류 전시회 여부) / 규모(대·중·소·미상) / 거래고객 유형(B2B·B2C) / 키워드 5개(표준 키워드 풀에서 선택). 스크립트와 같은 폴더에 `원본.csv`를 두고 실행
 
-`app/models.py`의 `Exhibition` 모델은 이 파이프라인이 채우는 `raw_exhibitions` 테이블을 그대로 매핑해서 읽습니다.
+`app/models.py`의 `Exhibition` 모델은 `classify_with_openai.py`가 채우는 `raw_exhibitions` 테이블을 그대로 매핑해서 읽습니다. `preprocess.py`는 CSV를 입출력으로 쓰는 별도 분류 파이프라인이라, DB에 반영하려면 `clean.csv`를 다시 `raw_exhibitions`에 적재하는 과정이 필요합니다.
 
 ## 코드 구조
 ```
