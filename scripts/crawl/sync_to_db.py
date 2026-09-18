@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS raw_exhibitions (
     food_yn         INTEGER,
     scale           TEXT,
     keywords        TEXT,
+    classified_at   TEXT,
     is_active       INTEGER NOT NULL DEFAULT 1,
     last_updated_at TEXT NOT NULL
 );
@@ -84,7 +85,7 @@ CREATE TABLE IF NOT EXISTS raw_exhibitions (
 NEW_COLUMNS = [
     "id", "detail_url", "name", "start_date", "end_date", "country", "city", "venue",
     "audience_note", "website", "intro", "category", "continent", "food_yn", "scale",
-    "keywords", "is_active", "last_updated_at",
+    "keywords", "classified_at", "is_active", "last_updated_at",
 ]
 
 
@@ -137,6 +138,7 @@ def _old_row_to_new(old_cols, row):
         "food_yn": pick("food_yn", default=None),
         "scale": pick("scale", "규모", default=None),
         "keywords": pick("keywords", "키워드", default=None),
+        "classified_at": pick("classified_at", default=None),
         "is_active": pick("is_active", default=1),
         "last_updated_at": pick("last_updated_at", default=now_iso()),
     }
@@ -169,14 +171,14 @@ def init_db(conn):
             INSERT INTO raw_exhibitions
                 (detail_url, name, start_date, end_date, country, city, venue,
                  audience_note, website, intro, category, continent, food_yn, scale, keywords,
-                 is_active, last_updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 classified_at, is_active, last_updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 new_row["detail_url"], new_row["name"], new_row["start_date"], new_row["end_date"],
                 new_row["country"], new_row["city"], new_row["venue"], new_row["audience_note"],
                 new_row["website"], new_row["intro"], new_row["category"], new_row["continent"],
-                new_row["food_yn"], new_row["scale"], new_row["keywords"],
+                new_row["food_yn"], new_row["scale"], new_row["keywords"], new_row["classified_at"],
                 new_row["is_active"], new_row["last_updated_at"],
             ),
         )

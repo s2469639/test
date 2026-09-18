@@ -75,21 +75,20 @@ python run.py          # 기본 포트 5000
 #    (예전 스키마의 DB라면 첫 실행 때 데이터를 보존하며 자동으로 새 스키마로 마이그레이션됨)
 python scripts/crawl/sync_to_db.py --db instance/sabuzak.db --details
 
-# 2. 소량 샘플로 원본.csv 생성 후 OpenAI로 분류 (대륙 / food_yn / 규모 / 키워드)
-python scripts/classify/make_sample_csv.py --db instance/sabuzak.db --limit 20
-python scripts/classify/preprocess.py
+# 2. OpenAI로 분류 (대륙 / food_yn / 규모 / 키워드) → 같은 DB에 바로 저장
+#    아직 분류 안 됐거나, 크롤링으로 내용이 갱신된 것만 골라서 처리 (재분류 비용 절감)
+python scripts/classify/preprocess.py --db instance/sabuzak.db
 ```
 
 - `scripts/crawl/tradefairdates_scraper.py` — 단일 카테고리 페이지 크롤러 (다른 스크립트가 모듈로 불러다 씀). 개최기간 원문을 `start_date`/`end_date`(YYYYMMDD 숫자)로도 변환하고, `p.zutritt`(참관대상 원문, 예: "professional visitors only")도 함께 수집
 - `scripts/crawl/sync_to_db.py` — 7개 카테고리 통합 크롤링 + `raw_exhibitions` 증분 동기화 (이름이 같아도 날짜가 바뀌면 업데이트, 목록에서 사라진 항목은 삭제 대신 비활성 처리)
 - `scripts/crawl/multi_crawl_gui.py` — 위 크롤링을 수동으로 실행할 때 쓰는 내부용 GUI(tkinter) 도구, CSV로도 저장 가능
 - `scripts/crawl/kotra_support_crawler.py` — KOTRA 정부 지원사업 공고 크롤러
-- `scripts/classify/make_sample_csv.py` — `raw_exhibitions`에서 일부만 뽑아 `preprocess.py`용 `원본.csv` 생성 (연습/테스트용)
-- `scripts/classify/preprocess.py` — `원본.csv` → `clean.csv`로 OpenAI 분류 결과 저장. 분류 기준: 대륙 / `food_yn`(식품류 전시회 여부) / 규모(대·중·소·미상) / 키워드 5개(표준 키워드 풀에서 선택). 거래고객 유형(B2B/B2C)은 별도 분류 없이 `raw_exhibitions`의 참관대상 원문 컬럼을 그대로 보여주는 쪽으로 대체함
+- `scripts/classify/preprocess.py` — `raw_exhibitions`를 직접 읽고 분류 결과를 그대로 저장(`continent`/`food_yn`/`scale`/`keywords` 컬럼 UPDATE). `classified_at` 컬럼으로 이미 분류된 건 건너뛰고, 크롤링으로 `last_updated_at`이 갱신된 것만 다시 분류함. `--force`로 전체 재분류, `--limit N`으로 연습용 소량 테스트 가능. 거래고객 유형(B2B/B2C)은 별도 분류 없이 `raw_exhibitions`의 참관대상 원문 컬럼을 그대로 보여주는 쪽으로 대체함
 
-`legacy/classify_with_openai.py`는 예전 방식(영문 컬럼, B2B/B2C 자체 분류)의 분류 스크립트로, 지금은 `preprocess.py`로 대체되어 더 이상 쓰지 않습니다.
+`legacy/classify_with_openai.py`(예전 영문 컬럼, B2B/B2C 자체 분류)와 `legacy/make_sample_csv.py`(CSV 샘플 추출용)는 `preprocess.py`가 DB를 직접 읽고 쓰게 되면서 더 이상 쓰지 않습니다.
 
-`app/models.py`의 `Exhibition` 모델은 `sync_to_db.py`가 채우는 `raw_exhibitions` 테이블(continent/food_yn/scale/keywords 컬럼 포함)을 그대로 매핑해서 읽습니다. `preprocess.py`는 CSV를 입출력으로 쓰는 별도 분류 단계라, DB에 반영하려면 `clean.csv`를 다시 `raw_exhibitions`에 적재하는 과정이 필요합니다 (아직 미구현).
+`app/models.py`의 `Exhibition` 모델은 `sync_to_db.py`가 채우고 `preprocess.py`가 분류 결과를 더하는 `raw_exhibitions` 테이블을 그대로 매핑해서 읽습니다.
 
 ### raw_exhibitions 컬럼
 DB 컬럼명은 영문으로 두고(SQL/ORM에서 매번 따옴표 처리를 안 해도 되고 다른 도구와의 호환성도 좋음), 화면에 한글로 보여주는 건 Jinja 템플릿의 라벨/필터가 담당합니다.
@@ -106,6 +105,7 @@ DB 컬럼명은 영문으로 두고(SQL/ORM에서 매번 따옴표 처리를 안
 | intro | 상세설명 | |
 | category | (비표시) | 크롤링 카테고리(내부용, 부분 크롤링 시 비활성화 범위 판단에 필요) |
 | continent / food_yn / scale / keywords | 대륙 / food_yn / 규모 / 키워드 | `preprocess.py` 분류 결과 |
+| classified_at | (비표시) | 마지막 분류 시각 (내부용, `preprocess.py`가 이미 분류된 건 건너뛰는 기준) |
 | is_active | (비표시) | 최근 크롤링에서도 보였는지 |
 | last_updated_at | 마지막 업데이트 | 박람회 상세 페이지에 표시 |
 
@@ -148,11 +148,11 @@ sabuzak/
 │   │   ├── multi_crawl_gui.py
 │   │   └── kotra_support_crawler.py
 │   └── classify/
-│       ├── make_sample_csv.py
 │       └── preprocess.py
 ├── legacy/
 │   ├── streamlit_prototype.py   # 초기 Streamlit 목업 (참고용, 배포 대상 아님)
-│   └── classify_with_openai.py  # 예전 분류 스크립트 (preprocess.py로 대체됨)
+│   ├── classify_with_openai.py  # 예전 분류 스크립트 (preprocess.py로 대체됨)
+│   └── make_sample_csv.py       # 예전 CSV 샘플 추출 스크립트 (preprocess.py --limit으로 대체됨)
 ├── data/                        # HS코드·규제 등 정적 참조 데이터 (CSV 등, 준비 중)
 ├── instance/
 │   └── sabuzak.db                # SQLite (git 미포함)

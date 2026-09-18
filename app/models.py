@@ -49,6 +49,7 @@ class Exhibition(db.Model):
     food_yn = db.Column(db.Integer)
     scale = db.Column(db.String(20))
     keywords = db.Column(db.Text)
+    classified_at = db.Column(db.String(64))
 
 
 class ConceptDraft(db.Model):

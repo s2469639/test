@@ -1,4 +1,8 @@
-"""instance/sabuzak.db에서 일부 박람회만 뽑아 원본.csv를 만드는 연습용 스크립트.
+"""[DEPRECATED] scripts/classify/preprocess.py가 이제 DB를 직접 읽고 써서
+(classified_at 기준으로 미분류/변경분만) 이 CSV 샘플 추출 단계가 필요 없어짐.
+연습 시에는 `python preprocess.py --limit 5`처럼 --limit만 쓰면 됨.
+
+instance/sabuzak.db에서 일부 박람회만 뽑아 원본.csv를 만드는 연습용 스크립트.
 
 사용법 (scripts/classify 폴더에서 실행):
     python make_sample_csv.py            # 기본 5건
