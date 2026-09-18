@@ -21,7 +21,15 @@
       <div class="card"><label>개최장소</label><p>{{ exhibition.venue }}</p></div>
       <div class="card"><label>개최기간</label><p>{{ exhibition.start_date | period(exhibition.end_date) }}</p></div>
       <div class="card"><label>규모</label><p>{{ exhibition.scale or "미상" }}</p></div>
-      <div class="card"><label>참관대상</label><p>{{ exhibition.audience_note or "정보 없음" }}</p></div>
+      <div class="card">
+        <label>참관대상</label>
+        <p>
+          {% if exhibition.audience_type and exhibition.audience_type != "미상" %}
+            <span class="badge">{{ exhibition.audience_type }}</span>
+          {% endif %}
+          {{ exhibition.audience_note or "정보 없음" }}
+        </p>
+      </div>
       <div class="card"><label>환율 (USD→KRW)</label><p>{{ exchange_rate if exchange_rate is not none else "조회 실패" }}</p></div>
     </div>
     <div class="card">

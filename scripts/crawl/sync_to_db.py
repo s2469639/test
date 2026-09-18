@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS raw_exhibitions (
     city            TEXT,
     venue           TEXT,
     audience_note   TEXT,
+    audience_type   TEXT,
     website         TEXT,
     intro           TEXT,
     category        TEXT,
@@ -85,8 +86,8 @@ CREATE TABLE IF NOT EXISTS raw_exhibitions (
 
 NEW_COLUMNS = [
     "id", "detail_url", "name", "start_date", "end_date", "country", "city", "venue",
-    "audience_note", "website", "intro", "category", "continent", "food_yn", "scale",
-    "keywords", "intro_ko", "classified_at", "is_active", "last_updated_at",
+    "audience_note", "audience_type", "website", "intro", "category", "continent", "food_yn",
+    "scale", "keywords", "intro_ko", "classified_at", "is_active", "last_updated_at",
 ]
 
 
@@ -123,6 +124,11 @@ def _old_row_to_new(old_cols, row):
     if end_date in (None, 0):
         end_date = tfd.UNKNOWN_DATE
 
+    audience_note = pick("audience_note", "참관대상", default="")
+    # audience_type은 규칙 기반이라 예전 값이 있어도 항상 audience_note 기준으로 재계산
+    # (분류 기준이 바뀔 수 있고, 재계산 비용이 사실상 0이라 굳이 예전 값을 보존할 이유가 없음)
+    audience_type = tfd.classify_audience_type(audience_note)
+
     return {
         "detail_url": row.get("detail_url"),
         "name": pick("name", "박람회명", default=""),
@@ -131,7 +137,8 @@ def _old_row_to_new(old_cols, row):
         "country": pick("country", "국가", default=""),
         "city": pick("city", "도시", default=""),
         "venue": pick("venue", "장소", default=""),
-        "audience_note": pick("audience_note", "참관대상", default=""),
+        "audience_note": audience_note,
+        "audience_type": audience_type,
         "website": pick("website", "웹사이트", default=""),
         "intro": pick("intro", "상세설명", default=""),
         "category": pick("category", default=""),
@@ -172,16 +179,17 @@ def init_db(conn):
             """
             INSERT INTO raw_exhibitions
                 (detail_url, name, start_date, end_date, country, city, venue,
-                 audience_note, website, intro, category, continent, food_yn, scale, keywords,
-                 intro_ko, classified_at, is_active, last_updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 audience_note, audience_type, website, intro, category, continent, food_yn,
+                 scale, keywords, intro_ko, classified_at, is_active, last_updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 new_row["detail_url"], new_row["name"], new_row["start_date"], new_row["end_date"],
                 new_row["country"], new_row["city"], new_row["venue"], new_row["audience_note"],
-                new_row["website"], new_row["intro"], new_row["category"], new_row["continent"],
-                new_row["food_yn"], new_row["scale"], new_row["keywords"], new_row["intro_ko"],
-                new_row["classified_at"], new_row["is_active"], new_row["last_updated_at"],
+                new_row["audience_type"], new_row["website"], new_row["intro"], new_row["category"],
+                new_row["continent"], new_row["food_yn"], new_row["scale"], new_row["keywords"],
+                new_row["intro_ko"], new_row["classified_at"], new_row["is_active"],
+                new_row["last_updated_at"],
             ),
         )
 
@@ -284,10 +292,13 @@ def sync_rows(conn, rows):
 
         cur.execute(
             "SELECT name, start_date, end_date, country, city, venue, audience_note, "
-            "website, intro, category FROM raw_exhibitions WHERE detail_url = ?",
+            "audience_type, website, intro, category FROM raw_exhibitions WHERE detail_url = ?",
             (detail_url,),
         )
         existing = cur.fetchone()
+
+        audience_note = row.get("참관대상", "")
+        audience_type = row.get("거래유형") or tfd.classify_audience_type(audience_note)
 
         # 이름이 같아도 날짜(시작일/종료일)가 바뀌면 다른 값으로 취급되어 아래
         # changed 비교에서 자동으로 업데이트 대상이 된다.
@@ -298,7 +309,8 @@ def sync_rows(conn, rows):
             row["개최국"],
             row["개최도시"],
             row["개최장소(베뉴)"],
-            row.get("참관대상", ""),
+            audience_note,
+            audience_type,
             row.get("축제URL", ""),
             row.get("축제소개", ""),
             row.get("category", ""),
@@ -309,8 +321,9 @@ def sync_rows(conn, rows):
                 """
                 INSERT INTO raw_exhibitions
                     (detail_url, name, start_date, end_date, country, city, venue,
-                     audience_note, website, intro, category, is_active, last_updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                     audience_note, audience_type, website, intro, category, is_active,
+                     last_updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
                 """,
                 (detail_url, *new_values, ts),
             )
@@ -318,10 +331,10 @@ def sync_rows(conn, rows):
         else:
             # 상세페이지를 이번에 안 가져왔으면(웹사이트/상세설명이 빈 값) 기존 값 보존
             merged = list(new_values)
-            if not row.get("축제URL") and existing[7]:
-                merged[7] = existing[7]
-            if not row.get("축제소개") and existing[8]:
+            if not row.get("축제URL") and existing[8]:
                 merged[8] = existing[8]
+            if not row.get("축제소개") and existing[9]:
+                merged[9] = existing[9]
 
             changed = tuple(merged) != tuple(existing)
             if changed:
@@ -329,8 +342,8 @@ def sync_rows(conn, rows):
                     """
                     UPDATE raw_exhibitions
                     SET name=?, start_date=?, end_date=?, country=?, city=?, venue=?,
-                        audience_note=?, website=?, intro=?, category=?, is_active=1,
-                        last_updated_at=?
+                        audience_note=?, audience_type=?, website=?, intro=?, category=?,
+                        is_active=1, last_updated_at=?
                     WHERE detail_url=?
                     """,
                     (*merged, ts, detail_url),

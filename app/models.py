@@ -38,6 +38,9 @@ class Exhibition(db.Model):
     city = db.Column(db.String(120))
     venue = db.Column(db.String(255))
     audience_note = db.Column(db.Text)
+    # audience_note 원문을 규칙 기반으로 판별한 B2B/B2C/B2B, B2C/미상
+    # (scripts/crawl/tradefairdates_scraper.classify_audience_type, AI 미사용)
+    audience_type = db.Column(db.String(20))
     website = db.Column(db.String(255))
     intro = db.Column(db.Text)
     category = db.Column(db.String(120))

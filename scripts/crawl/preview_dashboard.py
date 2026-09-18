@@ -107,6 +107,14 @@ PAGE_TEMPLATE = """
         {% endfor %}
       </div>
     </div>
+    <div class="stat-card">
+      <div class="label">거래유형 (audience_type, 규칙 기반·AI 미사용)</div>
+      <div class="rows">
+        {% for label, count in audience_type_counts %}
+          <span><b>{{ count }}</b>{{ label }}</span>
+        {% endfor %}
+      </div>
+    </div>
   </div>
 
   <div class="filters">
@@ -124,7 +132,7 @@ PAGE_TEMPLATE = """
     <thead>
       <tr>
         <th>#</th><th>전시회명</th><th>기간</th><th>국가</th><th>도시</th><th>베뉴</th>
-        <th>참관대상</th><th>대륙</th><th>food_yn</th><th>규모</th><th>키워드</th>
+        <th>참관대상</th><th>거래유형</th><th>대륙</th><th>food_yn</th><th>규모</th><th>키워드</th>
         <th>카테고리</th><th>웹사이트</th><th>소개(intro_ko 있으면 그걸로)</th><th>상태</th>
       </tr>
     </thead>
@@ -138,6 +146,7 @@ PAGE_TEMPLATE = """
         <td>{{ r.city }}</td>
         <td>{{ r.venue }}</td>
         <td>{{ r.audience_note }}</td>
+        <td>{% if r.audience_type and r.audience_type != '미상' %}<span class="badge">{{ r.audience_type }}</span>{% endif %}</td>
         <td>{{ r.continent or '' }}</td>
         <td>
           {% if r.classified_at %}
@@ -216,6 +225,7 @@ def index():
     scale_counts = _value_counts(df, "scale")
     food_yn_counts = _value_counts(df, "food_yn")
     category_counts = _value_counts(df, "category")
+    audience_type_counts = _value_counts(df, "audience_type")
 
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
@@ -261,6 +271,7 @@ def index():
         scale_counts=scale_counts,
         food_yn_counts=food_yn_counts,
         category_counts=category_counts,
+        audience_type_counts=audience_type_counts,
     )
 
 

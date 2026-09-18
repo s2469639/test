@@ -92,10 +92,10 @@ python scripts/crawl/sync_to_db.py --db instance/sabuzak.db --details
 python scripts/classify/preprocess.py --db instance/sabuzak.db
 ```
 
-- `scripts/crawl/tradefairdates_scraper.py` — 단일 카테고리 페이지 크롤러 (다른 스크립트가 모듈로 불러다 씀). 개최기간 원문을 `start_date`/`end_date`(YYYYMMDD 숫자)로도 변환하고, `p.zutritt`(참관대상 원문, 예: "professional visitors only")도 함께 수집
+- `scripts/crawl/tradefairdates_scraper.py` — 단일 카테고리 페이지 크롤러 (다른 스크립트가 모듈로 불러다 씀). 개최기간 원문을 `start_date`/`end_date`(YYYYMMDD 숫자)로도 변환하고, `p.zutritt`(참관대상 원문, 예: "professional visitors only")도 함께 수집. 참관대상 원문에서 `classify_audience_type()`으로 `audience_type`(B2B/B2C/B2B, B2C/미상)도 **AI 없이 규칙 기반으로** 바로 계산 ("professional/trade only" 포함 시 B2B, "general public" 포함 시 B2C, 둘 다면 "B2B, B2C")
 - `scripts/crawl/sync_to_db.py` — 7개 카테고리 통합 크롤링 + `raw_exhibitions` 증분 동기화 (이름이 같아도 날짜가 바뀌면 업데이트, 목록에서 사라진 항목은 삭제 대신 비활성 처리)
 - `scripts/crawl/multi_crawl_gui.py` — 위 크롤링을 수동으로 실행할 때 쓰는 내부용 GUI(tkinter) 도구, CSV로도 저장 가능
-- `scripts/classify/preprocess.py` — `raw_exhibitions`를 직접 읽고 분류 결과를 그대로 저장(`continent`/`food_yn`/`scale`/`keywords`/`intro_ko` 컬럼 UPDATE, 같은 API 호출 안에서 한 번에 처리). `classified_at` 컬럼으로 이미 분류된 건 건너뛰고, 크롤링으로 `last_updated_at`이 갱신된 것만 다시 분류함. `--force`로 전체 재분류, `--limit N`으로 연습용 소량 테스트 가능. 거래고객 유형(B2B/B2C)은 별도 분류 없이 `raw_exhibitions`의 참관대상 원문 컬럼을 그대로 보여주는 쪽으로 대체함
+- `scripts/classify/preprocess.py` — `raw_exhibitions`를 직접 읽고 분류 결과를 그대로 저장(`continent`/`food_yn`/`scale`/`keywords`/`intro_ko` 컬럼 UPDATE, 같은 API 호출 안에서 한 번에 처리). `classified_at` 컬럼으로 이미 분류된 건 건너뛰고, 크롤링으로 `last_updated_at`이 갱신된 것만 다시 분류함. `--force`로 전체 재분류, `--limit N`으로 연습용 소량 테스트 가능. 거래고객 유형(B2B/B2C)은 이 스크립트가 아니라 크롤링 시점에 `audience_type`으로 이미 계산됨(위 참고)
 - `app/services/country_names.py` — 국가명 영문→한글 정적 매핑(AI 호출 없음, `country_ko` Jinja 필터로 노출). `name`/`city`/`venue`는 고유명사라 번역하지 않고 원문 그대로 둠, `country`만 화면 표시 시 이 매핑을 거침 (매핑에 없는 국가는 원문 그대로)
 
 `legacy/classify_with_openai.py`(예전 영문 컬럼, B2B/B2C 자체 분류)와 `legacy/make_sample_csv.py`(CSV 샘플 추출용)는 `preprocess.py`가 DB를 직접 읽고 쓰게 되면서 더 이상 쓰지 않습니다.
@@ -114,6 +114,7 @@ DB 컬럼명은 영문으로 두고(SQL/ORM에서 매번 따옴표 처리를 안
 | country | 국가 | DB에는 영문 원문 저장, 화면에는 `country_ko` 필터로 한글 표시 (예: Morocco → 모로코) |
 | city / venue | 도시 / 장소 | 고유명사라 번역하지 않고 원문(영문) 그대로 표시 |
 | audience_note | 참관대상 | 원문 그대로(예: "professional visitors only") |
+| audience_type | 거래유형 | 참관대상 원문에서 규칙 기반으로 계산한 B2B/B2C/`B2B, B2C`/미상 (AI 미사용, 크롤링 시점에 계산) |
 | website | 웹사이트 | 박람회 공식 사이트 |
 | intro | 상세설명(원문) | |
 | intro_ko | 상세설명 | `preprocess.py`가 번역한 한국어 버전. 없으면 화면에서 `intro` 원문으로 대체 표시 |
