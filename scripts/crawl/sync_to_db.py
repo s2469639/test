@@ -56,37 +56,35 @@ SITES = {
 
 DEFAULT_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sabuzak.db")
 
-# detail_url(크롤링 dedup용 내부 키)과 category(부분 크롤링 시 비활성화 범위 판단용 내부 키)는
-# 앱에서 직접 보여줄 컬럼이 아니라서 영문 이름 그대로 둔다. 나머지는 사용자가 보게 될 컬럼이라
-# 한글 컬럼명을 그대로 SQLite 컬럼명으로 쓴다 (Python 쪽에서는 app/models.py가 영문 속성명으로
-# db.Column("박람회명", ...) 식으로 매핑해서 읽는다).
+# DB 컬럼명은 영문으로 둔다 (SQL/ORM에서 매번 따옴표 처리를 안 해도 되고, 다른 도구와의
+# 호환성도 더 좋음). 화면에 한글로 보여주는 건 Jinja 템플릿 쪽 라벨/필터가 담당한다.
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS raw_exhibitions (
-    "순번"           INTEGER PRIMARY KEY AUTOINCREMENT,
-    detail_url        TEXT NOT NULL UNIQUE,
-    "박람회명"        TEXT,
-    "시작일"          INTEGER,
-    "종료일"          INTEGER,
-    "국가"            TEXT,
-    "도시"            TEXT,
-    "장소"            TEXT,
-    "참관대상"        TEXT,
-    "웹사이트"        TEXT,
-    "상세설명"        TEXT,
-    category           TEXT,
-    "대륙"            TEXT,
-    food_yn            INTEGER,
-    "규모"            TEXT,
-    "키워드"          TEXT,
-    is_active          INTEGER NOT NULL DEFAULT 1,
-    last_updated_at    TEXT NOT NULL
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    detail_url      TEXT NOT NULL UNIQUE,
+    name            TEXT,
+    start_date      INTEGER,
+    end_date        INTEGER,
+    country         TEXT,
+    city            TEXT,
+    venue           TEXT,
+    audience_note   TEXT,
+    website         TEXT,
+    intro           TEXT,
+    category        TEXT,
+    continent       TEXT,
+    food_yn         INTEGER,
+    scale           TEXT,
+    keywords        TEXT,
+    is_active       INTEGER NOT NULL DEFAULT 1,
+    last_updated_at TEXT NOT NULL
 );
 """
 
 NEW_COLUMNS = [
-    "순번", "detail_url", "박람회명", "시작일", "종료일", "국가", "도시", "장소",
-    "참관대상", "웹사이트", "상세설명", "category", "대륙", "food_yn", "규모", "키워드",
-    "is_active", "last_updated_at",
+    "id", "detail_url", "name", "start_date", "end_date", "country", "city", "venue",
+    "audience_note", "website", "intro", "category", "continent", "food_yn", "scale",
+    "keywords", "is_active", "last_updated_at",
 ]
 
 
@@ -103,7 +101,7 @@ def _table_exists(conn, name):
 
 
 def _old_row_to_new(old_cols, row):
-    """예전 스키마(영문 컬럼명, period 하나, first_seen_at/last_seen_at 포함 등)의
+    """예전 스키마(period 하나, first_seen_at/last_seen_at 포함, 혹은 한글 컬럼명 등)의
     한 행을 새 스키마 값으로 변환. old_cols는 {컬럼명}, row는 dict."""
 
     def pick(*names, default=None):
@@ -112,29 +110,33 @@ def _old_row_to_new(old_cols, row):
                 return row[n]
         return default
 
-    start_date = pick("시작일", default=None)
-    end_date = pick("종료일", default=None)
+    start_date = pick("start_date", "시작일", default=None)
+    end_date = pick("end_date", "종료일", default=None)
     if start_date is None and "period" in old_cols:
         start_date, end_date = tfd.parse_period(row.get("period", ""))
-    start_date = start_date if start_date is not None else 0
-    end_date = end_date if end_date is not None else 0
+    # 0은 이 스크립트의 예전 버전이 "날짜 미상"에 썼던 값(오름차순 정렬 시 맨 위로
+    # 올라오는 버그가 있었음) -> 지금 sentinel인 UNKNOWN_DATE로 교체
+    if start_date in (None, 0):
+        start_date = tfd.UNKNOWN_DATE
+    if end_date in (None, 0):
+        end_date = tfd.UNKNOWN_DATE
 
     return {
         "detail_url": row.get("detail_url"),
-        "박람회명": pick("박람회명", "name", default=""),
-        "시작일": start_date,
-        "종료일": end_date,
-        "국가": pick("국가", "country", default=""),
-        "도시": pick("도시", "city", default=""),
-        "장소": pick("장소", "venue", default=""),
-        "참관대상": pick("참관대상", "audience_note", default=""),
-        "웹사이트": pick("웹사이트", "website", default=""),
-        "상세설명": pick("상세설명", "intro", default=""),
+        "name": pick("name", "박람회명", default=""),
+        "start_date": start_date,
+        "end_date": end_date,
+        "country": pick("country", "국가", default=""),
+        "city": pick("city", "도시", default=""),
+        "venue": pick("venue", "장소", default=""),
+        "audience_note": pick("audience_note", "참관대상", default=""),
+        "website": pick("website", "웹사이트", default=""),
+        "intro": pick("intro", "상세설명", default=""),
         "category": pick("category", default=""),
-        "대륙": pick("대륙", "continent", default=None),
+        "continent": pick("continent", "대륙", default=None),
         "food_yn": pick("food_yn", default=None),
-        "규모": pick("규모", "scale", default=None),
-        "키워드": pick("키워드", default=None),
+        "scale": pick("scale", "규모", default=None),
+        "keywords": pick("keywords", "키워드", default=None),
         "is_active": pick("is_active", default=1),
         "last_updated_at": pick("last_updated_at", default=now_iso()),
     }
@@ -165,16 +167,16 @@ def init_db(conn):
         conn.execute(
             """
             INSERT INTO raw_exhibitions
-                (detail_url, "박람회명", "시작일", "종료일", "국가", "도시", "장소",
-                 "참관대상", "웹사이트", "상세설명", category, "대륙", food_yn, "규모", "키워드",
+                (detail_url, name, start_date, end_date, country, city, venue,
+                 audience_note, website, intro, category, continent, food_yn, scale, keywords,
                  is_active, last_updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                new_row["detail_url"], new_row["박람회명"], new_row["시작일"], new_row["종료일"],
-                new_row["국가"], new_row["도시"], new_row["장소"], new_row["참관대상"],
-                new_row["웹사이트"], new_row["상세설명"], new_row["category"], new_row["대륙"],
-                new_row["food_yn"], new_row["규모"], new_row["키워드"],
+                new_row["detail_url"], new_row["name"], new_row["start_date"], new_row["end_date"],
+                new_row["country"], new_row["city"], new_row["venue"], new_row["audience_note"],
+                new_row["website"], new_row["intro"], new_row["category"], new_row["continent"],
+                new_row["food_yn"], new_row["scale"], new_row["keywords"],
                 new_row["is_active"], new_row["last_updated_at"],
             ),
         )
@@ -253,8 +255,8 @@ def sync_rows(conn, rows):
         seen_urls.add(detail_url)
 
         cur.execute(
-            'SELECT "박람회명", "시작일", "종료일", "국가", "도시", "장소", "참관대상", '
-            '"웹사이트", "상세설명", category FROM raw_exhibitions WHERE detail_url = ?',
+            "SELECT name, start_date, end_date, country, city, venue, audience_note, "
+            "website, intro, category FROM raw_exhibitions WHERE detail_url = ?",
             (detail_url,),
         )
         existing = cur.fetchone()
@@ -278,8 +280,8 @@ def sync_rows(conn, rows):
             cur.execute(
                 """
                 INSERT INTO raw_exhibitions
-                    (detail_url, "박람회명", "시작일", "종료일", "국가", "도시", "장소",
-                     "참관대상", "웹사이트", "상세설명", category, is_active, last_updated_at)
+                    (detail_url, name, start_date, end_date, country, city, venue,
+                     audience_note, website, intro, category, is_active, last_updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
                 """,
                 (detail_url, *new_values, ts),
@@ -298,8 +300,8 @@ def sync_rows(conn, rows):
                 cur.execute(
                     """
                     UPDATE raw_exhibitions
-                    SET "박람회명"=?, "시작일"=?, "종료일"=?, "국가"=?, "도시"=?, "장소"=?,
-                        "참관대상"=?, "웹사이트"=?, "상세설명"=?, category=?, is_active=1,
+                    SET name=?, start_date=?, end_date=?, country=?, city=?, venue=?,
+                        audience_note=?, website=?, intro=?, category=?, is_active=1,
                         last_updated_at=?
                     WHERE detail_url=?
                     """,

@@ -80,7 +80,7 @@ python scripts/classify/make_sample_csv.py --db instance/sabuzak.db --limit 20
 python scripts/classify/preprocess.py
 ```
 
-- `scripts/crawl/tradefairdates_scraper.py` — 단일 카테고리 페이지 크롤러 (다른 스크립트가 모듈로 불러다 씀). 개최기간 원문을 `시작일`/`종료일`(YYYYMMDD 숫자)로도 변환하고, `p.zutritt`(참관대상 원문, 예: "professional visitors only")도 함께 수집
+- `scripts/crawl/tradefairdates_scraper.py` — 단일 카테고리 페이지 크롤러 (다른 스크립트가 모듈로 불러다 씀). 개최기간 원문을 `start_date`/`end_date`(YYYYMMDD 숫자)로도 변환하고, `p.zutritt`(참관대상 원문, 예: "professional visitors only")도 함께 수집
 - `scripts/crawl/sync_to_db.py` — 7개 카테고리 통합 크롤링 + `raw_exhibitions` 증분 동기화 (이름이 같아도 날짜가 바뀌면 업데이트, 목록에서 사라진 항목은 삭제 대신 비활성 처리)
 - `scripts/crawl/multi_crawl_gui.py` — 위 크롤링을 수동으로 실행할 때 쓰는 내부용 GUI(tkinter) 도구, CSV로도 저장 가능
 - `scripts/crawl/kotra_support_crawler.py` — KOTRA 정부 지원사업 공고 크롤러
@@ -89,23 +89,25 @@ python scripts/classify/preprocess.py
 
 `legacy/classify_with_openai.py`는 예전 방식(영문 컬럼, B2B/B2C 자체 분류)의 분류 스크립트로, 지금은 `preprocess.py`로 대체되어 더 이상 쓰지 않습니다.
 
-`app/models.py`의 `Exhibition` 모델은 `sync_to_db.py`가 채우는 `raw_exhibitions` 테이블(대륙/food_yn/규모/키워드 컬럼 포함)을 그대로 매핑해서 읽습니다. `preprocess.py`는 CSV를 입출력으로 쓰는 별도 분류 단계라, DB에 반영하려면 `clean.csv`를 다시 `raw_exhibitions`에 적재하는 과정이 필요합니다 (아직 미구현).
+`app/models.py`의 `Exhibition` 모델은 `sync_to_db.py`가 채우는 `raw_exhibitions` 테이블(continent/food_yn/scale/keywords 컬럼 포함)을 그대로 매핑해서 읽습니다. `preprocess.py`는 CSV를 입출력으로 쓰는 별도 분류 단계라, DB에 반영하려면 `clean.csv`를 다시 `raw_exhibitions`에 적재하는 과정이 필요합니다 (아직 미구현).
 
 ### raw_exhibitions 컬럼
-| 컬럼 | 설명 |
-|---|---|
-| 순번 | PK |
-| detail_url | 크롤링 dedup용 내부 키 (tradefairdates.com 상세페이지 URL) |
-| 박람회명 | |
-| 시작일 / 종료일 | YYYYMMDD 숫자. `0`=날짜 미상, 일자만 미상이면 일(day)=`32`(예: 2027년 10월 중 → `20271032`)로 채워 그 달 실제 날짜들보다 뒤로 정렬되게 함. 임박한 날짜 순 정렬에 사용 |
-| 국가 / 도시 / 장소 | |
-| 참관대상 | 원문 그대로(예: "professional visitors only") |
-| 웹사이트 | 박람회 공식 사이트 |
-| 상세설명 | |
-| category | 크롤링 카테고리(내부용, 부분 크롤링 시 비활성화 범위 판단에 필요) |
-| 대륙 / food_yn / 규모 / 키워드 | `preprocess.py` 분류 결과 |
-| is_active | 최근 크롤링에서도 보였는지 |
-| last_updated_at | 마지막 갱신 시각 (박람회 상세 페이지에 표시) |
+DB 컬럼명은 영문으로 두고(SQL/ORM에서 매번 따옴표 처리를 안 해도 되고 다른 도구와의 호환성도 좋음), 화면에 한글로 보여주는 건 Jinja 템플릿의 라벨/필터가 담당합니다.
+
+| 컬럼 | 화면 표시 | 설명 |
+|---|---|---|
+| id | 순번 | PK |
+| detail_url | (비표시) | 크롤링 dedup용 내부 키 (tradefairdates.com 상세페이지 URL) |
+| name | 박람회명 | |
+| start_date / end_date | 시작일 / 종료일 | YYYYMMDD 숫자. 날짜 전체가 미상이면 `UNKNOWN_DATE`(99999999, 실존하는 모든 날짜보다 큰 sentinel), 연/월만 알고 일자가 미상이면 일(day)=`32`(예: 2027년 10월 중 → `20271032`)로 채움. **0을 미상 값으로 쓰면 오름차순 정렬에서 오히려 맨 앞으로 와버리므로 쓰지 않음** — 두 경우 모두 실제 날짜보다 큰 값이라 임박한 날짜 순 정렬 시 자연스럽게 맨 뒤로 감 |
+| country / city / venue | 국가 / 도시 / 장소 | |
+| audience_note | 참관대상 | 원문 그대로(예: "professional visitors only") |
+| website | 웹사이트 | 박람회 공식 사이트 |
+| intro | 상세설명 | |
+| category | (비표시) | 크롤링 카테고리(내부용, 부분 크롤링 시 비활성화 범위 판단에 필요) |
+| continent / food_yn / scale / keywords | 대륙 / food_yn / 규모 / 키워드 | `preprocess.py` 분류 결과 |
+| is_active | (비표시) | 최근 크롤링에서도 보였는지 |
+| last_updated_at | 마지막 업데이트 | 박람회 상세 페이지에 표시 |
 
 ## 코드 구조
 ```

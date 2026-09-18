@@ -3,10 +3,17 @@ mock 데이터 로직을 실제 DB 조회로 대체하는 자리."""
 
 from ..models import Exhibition
 
+# scripts/crawl/tradefairdates_scraper.UNKNOWN_DATE와 반드시 같은 값이어야 함.
+# 날짜 전체가 미상인 경우의 sentinel (임박순 정렬 시 항상 맨 뒤로 가도록 실존하는
+# 모든 YYYYMMDD 값보다 크게 잡음). 0을 쓰면 오름차순 정렬에서 맨 앞으로 와버리는
+# 버그가 생기므로 쓰지 않는다.
+UNKNOWN_DATE = 99999999
+
 
 def format_date(ymd):
-    """시작일/종료일(YYYYMMDD 정수)을 표시용 문자열로. 0=미정, 일=32=일자만 미정."""
-    if not ymd:
+    """시작일/종료일(YYYYMMDD 정수)을 표시용 문자열로.
+    UNKNOWN_DATE=날짜 전체 미상, 일=32=그 달 안에서 일자만 미상."""
+    if not ymd or ymd == UNKNOWN_DATE:
         return "날짜 미정"
     year, month, day = ymd // 10000, (ymd // 100) % 100, ymd % 100
     if day == 32:
@@ -15,7 +22,7 @@ def format_date(ymd):
 
 
 def format_period(start_date, end_date):
-    if not start_date and not end_date:
+    if not start_date or start_date == UNKNOWN_DATE:
         return "날짜 미정"
     if start_date == end_date:
         return format_date(start_date)
@@ -37,13 +44,11 @@ def count_exhibitions_by_continent():
 
 
 def list_exhibitions_by_continent(continent):
-    """임박한 날짜 순으로 정렬. 날짜 미상(start_date=0)은 맨 뒤로 보낸다."""
+    """임박한 날짜 순으로 정렬. start_date가 UNKNOWN_DATE(실존 날짜보다 큰 sentinel)라서
+    별도 CASE 없이 그냥 오름차순 정렬만 해도 날짜 미상 항목이 자동으로 맨 뒤에 온다."""
     return (
         Exhibition.query.filter_by(is_active=1, continent=continent)
-        .order_by(
-            (Exhibition.start_date == 0).asc(),
-            Exhibition.start_date.asc(),
-        )
+        .order_by(Exhibition.start_date.asc())
         .all()
     )
 

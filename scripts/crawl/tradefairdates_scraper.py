@@ -80,9 +80,18 @@ MONTHS = {
 }
 
 # tileHeader의 div.time에 나오는 개최기간 텍스트를 (시작일, 종료일) 숫자(YYYYMMDD)로 변환.
-# - 날짜 자체가 없으면(예: "Date Still Unknown") 0
-# - 일자까지는 모르고 달만 아는 경우(예: "Expected in October 2027")는 일(day)을 32로 채워
-#   그 달의 실제 날짜들보다 항상 뒤로 정렬되게 함
+#
+# 정렬(임박한 날짜 순 오름차순) 기준으로 "미상"을 항상 맨 뒤로 보내려면, 미상 값이
+# 실존하는 모든 날짜보다 커야 한다. 0(0000-00-00)은 사전식/숫자식 정렬 모두에서
+# 가장 작은 값이라 오름차순 정렬 시 오히려 맨 위로 올라오는 버그가 생긴다.
+# 그래서 두 가지 "미상"을 구분해서 인코딩한다:
+#   - 일자만 미상 (예: "Expected in October 2027", 연/월은 앎)
+#     -> 그 달의 일(day)을 32로 채움 (예: 20271032). 실제 날짜(...31)보다는 크지만
+#        다음 달(202711xx)보다는 작아서, 해당 월 안에서만 맨 뒤로 밀림
+#   - 날짜 전체가 미상 (예: "Date Still Unknown")
+#     -> UNKNOWN_DATE(99999999). 어떤 연/월/일 조합보다도 큰 값이라 항상 맨 뒤로 감
+UNKNOWN_DATE = 99999999
+
 _SINGLE_DAY_RE = re.compile(r"^(\d{1,2})\.\s+([A-Za-z]+)\s+(\d{4})$")
 _SAME_MONTH_RANGE_RE = re.compile(r"^(\d{1,2})\.\s*-\s*(\d{1,2})\.\s+([A-Za-z]+)\s+(\d{4})$")
 _CROSS_MONTH_RANGE_RE = re.compile(
@@ -99,7 +108,7 @@ def parse_period(period_text: str):
     """개최기간 원문 -> (시작일, 종료일) 숫자(YYYYMMDD) 튜플."""
     text = (period_text or "").strip()
     if not text:
-        return 0, 0
+        return UNKNOWN_DATE, UNKNOWN_DATE
 
     m = _SAME_MONTH_RANGE_RE.match(text)
     if m:
@@ -135,8 +144,8 @@ def parse_period(period_text: str):
             date = _ymd(int(year), month, 32)
             return date, date
 
-    # 그 외(예: "Date Still Unknown")는 날짜 미상
-    return 0, 0
+    # 그 외(예: "Date Still Unknown")는 날짜 전체가 미상
+    return UNKNOWN_DATE, UNKNOWN_DATE
 
 
 def fetch_html(url: str) -> str:

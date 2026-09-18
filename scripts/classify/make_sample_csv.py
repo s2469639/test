@@ -27,7 +27,7 @@ def main():
 
     conn = sqlite3.connect(args.db)
     cols = {row[1] for row in conn.execute("PRAGMA table_info(raw_exhibitions)")}
-    if "박람회명" not in cols:
+    if "name" not in cols:
         raise RuntimeError(
             "이 DB는 아직 예전 스키마입니다. 먼저 "
             "`python ../crawl/sync_to_db.py --db <이 DB 경로>`를 한 번 실행해서 "
@@ -35,7 +35,7 @@ def main():
         )
 
     cur = conn.execute(
-        'SELECT "박람회명", "국가", "웹사이트", "참관대상", "상세설명" FROM raw_exhibitions '
+        "SELECT name, country, website, audience_note, intro FROM raw_exhibitions "
         "WHERE is_active = 1 LIMIT ?",
         (args.limit,),
     )
