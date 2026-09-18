@@ -5,8 +5,13 @@ raw_exhibitions(SQLite)의 박람회를 OpenAI API로 분류해서 같은 DB에 
 scripts/crawl/sync_to_db.py 로 크롤링/적재를 마친 뒤 이 스크립트를 실행하면:
     - 아직 분류 안 된 박람회 (classified_at이 비어있음)
     - 크롤링으로 내용이 갱신됐는데 분류는 그대로인 박람회 (last_updated_at > classified_at)
-  만 골라서 OpenAI에 보내 분류하고, 그 결과를 continent/food_yn/scale/keywords
+  만 골라서 OpenAI에 보내 분류하고, 그 결과를 continent/food_yn/scale/keywords/intro_ko
   컬럼에 저장합니다. 이미 최신으로 분류된 건 다시 부르지 않아 API 비용을 아낍니다.
+
+name/country/city/venue는 원문(영문) 그대로 둡니다 (고유명사라 번역 대상이 아님).
+country는 화면에 보여줄 때만 app/services/country_names.py의 정적 매핑으로 한글
+표시(매핑에 없으면 원문 그대로). intro(상세설명)만 이 스크립트가 분류와 같은 호출로
+한국어로 번역해서 intro_ko에 저장합니다.
 
 사전 준비:
     pip install openai python-dotenv
@@ -76,7 +81,7 @@ def fetch_targets(conn, force: bool, limit: int):
 
 def build_prompt(name, country, website, audience_note, intro):
     return f"""
-    당신은 글로벌 박람회 데이터 분석 전문가입니다. 아래 박람회 정보를 바탕으로 4가지 항목을 정확히 분류해주세요.
+    당신은 글로벌 박람회 데이터 분석 전문가입니다. 아래 박람회 정보를 바탕으로 5가지 항목을 정확히 처리해주세요.
 
     [박람회 정보]
     - 박람회명(name): {name}
@@ -85,7 +90,7 @@ def build_prompt(name, country, website, audience_note, intro):
     - 참관대상 원문(audience note): {audience_note or '(정보 없음)'}
     - 소개(intro): {intro}
 
-    [분류 조건]
+    [처리 조건]
     1) 대륙: 해당 국가가 속한 대륙 (예: 아시아, 유럽, 북미, 남미, 아프리카, 오세아니아 등)
     2) food_yn: 식품류 전시회 여부 (True 또는 False)
        - TRUE: 가공식품, 과자/스낵, 베이커리, 디저트, 음료, 주류, 유기농/비건, HORECA 식자재 등 사람이 섭취하는 완제품 및 식음료 원료 전시회
@@ -100,13 +105,16 @@ def build_prompt(name, country, website, audience_note, intro):
        - 산업/품목군: 식품/음료종합, 제과/베이커리, 가공식품, 건강/기능성, 주류/음료, 수산/해양식품, 축산/육가공, 식자재, 식품원료/소재
        - 라이프/트렌드: 웰니스/비건, 친환경/유기농, 호스피탈리티, 외식/HORECA, 프리미엄미식, 지역특산물
        - 비식품/설비: 식품가공/설비, 포장기술, 식품테크, 소비재종합, 라이프스타일, 가든/인테리어, 농업/스마트팜
+    5) intro_ko: 위 소개(intro)를 자연스러운 한국어로 번역. 박람회명·지명·기관명 등 고유명사는
+       번역하지 말고 원문 그대로 표기 (예: "Summer Fancy Food Show"는 그대로 유지)
 
     반드시 아래 JSON 형식으로만 응답해주세요:
     {{
       "대륙": "...",
       "food_yn": true,
       "규모": "...",
-      "키워드": "키워드1, 키워드2, 키워드3, 키워드4, 키워드5"
+      "키워드": "키워드1, 키워드2, 키워드3, 키워드4, 키워드5",
+      "intro_ko": "..."
     }}
     """
 
@@ -127,7 +135,7 @@ def save_classification(conn, exhibition_id, result, ts):
     conn.execute(
         """
         UPDATE raw_exhibitions
-        SET continent=?, food_yn=?, scale=?, keywords=?, classified_at=?
+        SET continent=?, food_yn=?, scale=?, keywords=?, intro_ko=?, classified_at=?
         WHERE id=?
         """,
         (
@@ -135,6 +143,7 @@ def save_classification(conn, exhibition_id, result, ts):
             1 if result.get("food_yn") else 0,
             result.get("규모", "미상"),
             result.get("키워드", ""),
+            result.get("intro_ko", ""),
             ts,
             exhibition_id,
         ),
@@ -157,9 +166,9 @@ def main():
     conn = sqlite3.connect(args.db)
 
     cols = {row[1] for row in conn.execute("PRAGMA table_info(raw_exhibitions)")}
-    if "classified_at" not in cols:
+    if not {"classified_at", "intro_ko"} <= cols:
         raise RuntimeError(
-            "이 DB는 classified_at 컬럼이 없는 예전 스키마입니다. 먼저 "
+            "이 DB는 classified_at/intro_ko 컬럼이 없는 예전 스키마입니다. 먼저 "
             "`python ../crawl/sync_to_db.py --db <이 DB 경로>`를 한 번 실행해서 "
             "새 스키마로 마이그레이션한 뒤 다시 시도해주세요."
         )

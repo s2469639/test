@@ -6,7 +6,7 @@
   </p>
   <header class="page-header">
     <h1>기안서 작성</h1>
-    <p>{{ exhibition.name }} · {{ exhibition.country }}</p>
+    <p>{{ exhibition.name }} · {{ exhibition.country | country_ko }}</p>
   </header>
 
   <button id="generate-proposal-btn" data-exhibition-id="{{ exhibition.id }}">기안서 자동 생성하기</button>

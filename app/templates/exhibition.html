@@ -4,7 +4,7 @@
   <div class="hero">
     <a href="javascript:history.back()" class="back-btn">← 뒤로</a>
     <h1>{{ exhibition.name }}</h1>
-    <p>{{ exhibition.country }} · {{ exhibition.city }} · {{ exhibition.venue }}</p>
+    <p>{{ exhibition.country | country_ko }} · {{ exhibition.city }} · {{ exhibition.venue }}</p>
   </div>
 
   <nav class="tabs" data-active="overview">
@@ -17,7 +17,7 @@
 
   <section data-tab-panel="overview" class="tab-panel active">
     <div class="card-grid">
-      <div class="card"><label>개최지</label><p>{{ exhibition.country }} · {{ exhibition.city }}</p></div>
+      <div class="card"><label>개최지</label><p>{{ exhibition.country | country_ko }} · {{ exhibition.city }}</p></div>
       <div class="card"><label>개최장소</label><p>{{ exhibition.venue }}</p></div>
       <div class="card"><label>개최기간</label><p>{{ exhibition.start_date | period(exhibition.end_date) }}</p></div>
       <div class="card"><label>규모</label><p>{{ exhibition.scale or "미상" }}</p></div>
@@ -26,7 +26,8 @@
     </div>
     <div class="card">
       <label>공식 소개</label>
-      <p>{{ exhibition.intro }}</p>
+      <p>{{ exhibition.intro_ko or exhibition.intro }}</p>
+      {% if not exhibition.intro_ko %}<p class="hint">(아직 번역 전 — 원문)</p>{% endif %}
     </div>
     <p class="updated-at">마지막 업데이트: {{ exhibition.last_updated_at }}</p>
   </section>

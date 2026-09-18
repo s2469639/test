@@ -84,7 +84,8 @@ python scripts/classify/preprocess.py --db instance/sabuzak.db
 - `scripts/crawl/sync_to_db.py` — 7개 카테고리 통합 크롤링 + `raw_exhibitions` 증분 동기화 (이름이 같아도 날짜가 바뀌면 업데이트, 목록에서 사라진 항목은 삭제 대신 비활성 처리)
 - `scripts/crawl/multi_crawl_gui.py` — 위 크롤링을 수동으로 실행할 때 쓰는 내부용 GUI(tkinter) 도구, CSV로도 저장 가능
 - `scripts/crawl/kotra_support_crawler.py` — KOTRA 정부 지원사업 공고 크롤러
-- `scripts/classify/preprocess.py` — `raw_exhibitions`를 직접 읽고 분류 결과를 그대로 저장(`continent`/`food_yn`/`scale`/`keywords` 컬럼 UPDATE). `classified_at` 컬럼으로 이미 분류된 건 건너뛰고, 크롤링으로 `last_updated_at`이 갱신된 것만 다시 분류함. `--force`로 전체 재분류, `--limit N`으로 연습용 소량 테스트 가능. 거래고객 유형(B2B/B2C)은 별도 분류 없이 `raw_exhibitions`의 참관대상 원문 컬럼을 그대로 보여주는 쪽으로 대체함
+- `scripts/classify/preprocess.py` — `raw_exhibitions`를 직접 읽고 분류 결과를 그대로 저장(`continent`/`food_yn`/`scale`/`keywords`/`intro_ko` 컬럼 UPDATE, 같은 API 호출 안에서 한 번에 처리). `classified_at` 컬럼으로 이미 분류된 건 건너뛰고, 크롤링으로 `last_updated_at`이 갱신된 것만 다시 분류함. `--force`로 전체 재분류, `--limit N`으로 연습용 소량 테스트 가능. 거래고객 유형(B2B/B2C)은 별도 분류 없이 `raw_exhibitions`의 참관대상 원문 컬럼을 그대로 보여주는 쪽으로 대체함
+- `app/services/country_names.py` — 국가명 영문→한글 정적 매핑(AI 호출 없음, `country_ko` Jinja 필터로 노출). `name`/`city`/`venue`는 고유명사라 번역하지 않고 원문 그대로 둠, `country`만 화면 표시 시 이 매핑을 거침 (매핑에 없는 국가는 원문 그대로)
 
 `legacy/classify_with_openai.py`(예전 영문 컬럼, B2B/B2C 자체 분류)와 `legacy/make_sample_csv.py`(CSV 샘플 추출용)는 `preprocess.py`가 DB를 직접 읽고 쓰게 되면서 더 이상 쓰지 않습니다.
 
@@ -99,10 +100,12 @@ DB 컬럼명은 영문으로 두고(SQL/ORM에서 매번 따옴표 처리를 안
 | detail_url | (비표시) | 크롤링 dedup용 내부 키 (tradefairdates.com 상세페이지 URL) |
 | name | 박람회명 | |
 | start_date / end_date | 시작일 / 종료일 | YYYYMMDD 숫자. 날짜 전체가 미상이면 `UNKNOWN_DATE`(99999999, 실존하는 모든 날짜보다 큰 sentinel), 연/월만 알고 일자가 미상이면 일(day)=`32`(예: 2027년 10월 중 → `20271032`)로 채움. **0을 미상 값으로 쓰면 오름차순 정렬에서 오히려 맨 앞으로 와버리므로 쓰지 않음** — 두 경우 모두 실제 날짜보다 큰 값이라 임박한 날짜 순 정렬 시 자연스럽게 맨 뒤로 감 |
-| country / city / venue | 국가 / 도시 / 장소 | |
+| country | 국가 | DB에는 영문 원문 저장, 화면에는 `country_ko` 필터로 한글 표시 (예: Morocco → 모로코) |
+| city / venue | 도시 / 장소 | 고유명사라 번역하지 않고 원문(영문) 그대로 표시 |
 | audience_note | 참관대상 | 원문 그대로(예: "professional visitors only") |
 | website | 웹사이트 | 박람회 공식 사이트 |
-| intro | 상세설명 | |
+| intro | 상세설명(원문) | |
+| intro_ko | 상세설명 | `preprocess.py`가 번역한 한국어 버전. 없으면 화면에서 `intro` 원문으로 대체 표시 |
 | category | (비표시) | 크롤링 카테고리(내부용, 부분 크롤링 시 비활성화 범위 판단에 필요) |
 | continent / food_yn / scale / keywords | 대륙 / food_yn / 규모 / 키워드 | `preprocess.py` 분류 결과 |
 | classified_at | (비표시) | 마지막 분류 시각 (내부용, `preprocess.py`가 이미 분류된 건 건너뛰는 기준) |
@@ -126,6 +129,7 @@ sabuzak/
 │   ├── services/
 │   │   ├── data.py              # raw_exhibitions 조회/가공 (pandas)
 │   │   ├── exchange.py          # 환율 API 호출 + 캐싱
+│   │   ├── country_names.py     # 국가명 영문→한글 정적 매핑 (country_ko 필터)
 │   │   ├── llm.py               # OpenAI 컨셉·기안서 생성
 │   │   └── export.py            # PDF(weasyprint)/Word(python-docx) 출력
 │   ├── templates/

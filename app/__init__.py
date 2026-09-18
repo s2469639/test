@@ -15,7 +15,9 @@ def create_app(config_object="config.Config"):
     register_blueprints(app)
 
     from .services.data import format_period
+    from .services.country_names import to_korean as country_ko
     app.jinja_env.filters["period"] = format_period
+    app.jinja_env.filters["country_ko"] = country_ko
 
     @app.cli.command("init-db")
     def init_db():
