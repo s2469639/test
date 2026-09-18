@@ -59,8 +59,11 @@ def _run(db_path, site_keys, with_details):
         conn = sqlite3.connect(db_path)
         _sync.init_db(conn)
 
+        # 이미 website/intro가 채워진 항목은 --details를 켜도 다시 방문하지 않음
+        skip_details_for = _sync.get_detail_urls_with_details(conn) if with_details else None
+
         rows, failed_labels = _sync.crawl_selected_sites(
-            labels_urls, with_details=with_details, verbose=False
+            labels_urls, with_details=with_details, verbose=False, skip_details_for=skip_details_for
         )
         new_count, updated_count, _unchanged, seen_urls = _sync.sync_rows(conn, rows)
 

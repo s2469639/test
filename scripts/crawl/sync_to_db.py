@@ -196,7 +196,16 @@ def row_key(row):
     )
 
 
-def crawl_selected_sites(labels_urls, with_details, verbose=True):
+def get_detail_urls_with_details(conn):
+    """website와 intro가 둘 다 이미 채워진 detail_url 집합.
+    --details로 다시 돌릴 때 이미 가져온 상세페이지를 또 방문하지 않기 위해 씀."""
+    rows = conn.execute(
+        "SELECT detail_url FROM raw_exhibitions WHERE website != '' AND intro != ''"
+    ).fetchall()
+    return {r[0] for r in rows}
+
+
+def crawl_selected_sites(labels_urls, with_details, verbose=True, skip_details_for=None):
     """여러 카테고리를 순회하며 전체 페이지 수집 + 통합 중복 제거.
 
     반환값: (all_rows, failed_labels). failed_labels는 카테고리 목록 페이지
@@ -233,9 +242,15 @@ def crawl_selected_sites(labels_urls, with_details, verbose=True):
         all_rows.extend(new_rows)
 
     if with_details:
-        total = len(all_rows)
-        print(f"\n=== 상세페이지 수집 시작: 총 {total}건 ===")
-        for i, row in enumerate(all_rows, 1):
+        skip_details_for = skip_details_for or set()
+        targets = [r for r in all_rows if r.get("_detail_url") not in skip_details_for]
+        skipped = len(all_rows) - len(targets)
+        total = len(targets)
+        print(
+            f"\n=== 상세페이지 수집 시작: 대상 {total}건 "
+            f"(이미 website/intro가 있어서 건너뛴 {skipped}건 제외) ==="
+        )
+        for i, row in enumerate(targets, 1):
             detail_url = row.get("_detail_url", "")
             if not detail_url:
                 continue
@@ -362,6 +377,11 @@ def main():
     )
     parser.add_argument("--details", action="store_true", help="상세페이지 정보도 함께 수집")
     parser.add_argument(
+        "--force-details",
+        action="store_true",
+        help="--details와 함께 쓰면, 이미 website/intro가 있는 항목도 다시 방문해서 갱신",
+    )
+    parser.add_argument(
         "--no-deactivate",
         action="store_true",
         help="목록에서 사라진 기존 항목을 비활성 처리하지 않음",
@@ -381,7 +401,13 @@ def main():
     conn = sqlite3.connect(args.db)
     init_db(conn)
 
-    rows, failed_labels = crawl_selected_sites(labels_urls, with_details=args.details)
+    skip_details_for = None
+    if args.details and not args.force_details:
+        skip_details_for = get_detail_urls_with_details(conn)
+
+    rows, failed_labels = crawl_selected_sites(
+        labels_urls, with_details=args.details, skip_details_for=skip_details_for
+    )
     new_count, updated_count, unchanged_count, seen_urls = sync_rows(conn, rows)
 
     deactivated = 0
