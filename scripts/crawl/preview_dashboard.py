@@ -110,10 +110,15 @@ PAGE_TEMPLATE = """
   </div>
 
   <div class="filters">
-    <a href="?category=" class="{{ 'active' if not selected_category else '' }}">전체</a>
+    <a href="?category=&status={{ selected_status }}" class="{{ 'active' if not selected_category else '' }}">전체</a>
     {% for cat in categories %}
-      <a href="?category={{ cat }}" class="{{ 'active' if selected_category == cat else '' }}">{{ cat }}</a>
+      <a href="?category={{ cat }}&status={{ selected_status }}" class="{{ 'active' if selected_category == cat else '' }}">{{ cat }}</a>
     {% endfor %}
+  </div>
+  <div class="filters">
+    <a href="?category={{ selected_category }}&status=" class="{{ 'active' if not selected_status else '' }}">분류상태: 전체</a>
+    <a href="?category={{ selected_category }}&status=classified" class="{{ 'active' if selected_status == 'classified' else '' }}">분류완료만 ({{ classified }})</a>
+    <a href="?category={{ selected_category }}&status=unclassified" class="{{ 'active' if selected_status == 'unclassified' else '' }}">미분류만 ({{ total - classified }})</a>
   </div>
   <table>
     <thead>
@@ -218,13 +223,23 @@ def index():
     categories = [r[0] for r in cur.fetchall()]
 
     selected_category = request.args.get("category", "").strip()
+    selected_status = request.args.get("status", "").strip()  # "" / "classified" / "unclassified"
+
+    where = []
+    params = []
     if selected_category:
-        cur.execute(
-            "SELECT * FROM raw_exhibitions WHERE category = ? ORDER BY id DESC",
-            (selected_category,),
-        )
-    else:
-        cur.execute("SELECT * FROM raw_exhibitions ORDER BY id DESC")
+        where.append("category = ?")
+        params.append(selected_category)
+    if selected_status == "classified":
+        where.append("classified_at IS NOT NULL")
+    elif selected_status == "unclassified":
+        where.append("classified_at IS NULL")
+
+    query = "SELECT * FROM raw_exhibitions"
+    if where:
+        query += " WHERE " + " AND ".join(where)
+    query += " ORDER BY id ASC"
+    cur.execute(query, params)
     rows = cur.fetchall()
     conn.close()
 
